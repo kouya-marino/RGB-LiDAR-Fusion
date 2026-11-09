@@ -1,6 +1,10 @@
-# Mid-360 + D435i mount
+# Mid-360S + D435i mount
 
-A 3D-printable mount for the Livox Mid-360 and an Intel RealSense D435i. The lidar's scan axis is tilted 45° up from horizontal, and the camera is pitched 20° down. It attaches to a wall with M5 screws or to a pole with hose clamps.
+A 3D-printable mount for the Livox Mid-360S and an Intel RealSense D435i. The lidar's scan axis is tilted 45° up from horizontal, and the camera is pitched 20° down. It attaches to a wall with M5 screws or to a pole with hose clamps.
+
+**Lidar plate (current design):** 4× M3 clearance holes on the Mid-360S pattern (48 × 36 mm, centred, 48 mm along the lidar's X axis; user manual v1.0 2026.04, *Dimensions*) and Ø3 holes for locating pins at ±16 and ±23 mm on the centreline (the manual's drawing leaves the side of the round hole and the slot ambiguous, so both pairs are there). The lidar sits with its connector facing **uphill** (lidar +X downhill), as the design extrinsics assume.
+
+> **Earlier prints** (radial slots on the 45° diagonals, made for square hole patterns) do **not** match the Mid-360S holes; on the reference rig the lidar is held with double-sided foam tape instead. The images below show that first version.
 
 <p align="center">
   <img src="images/mount_cad_views.png" alt="CAD views of the mount" width="45%">
@@ -79,5 +83,7 @@ ros2 run tf2_ros static_transform_publisher \
 ## Caveats
 
 - These are **design** values from CAD, not a calibration. Print tolerances and how each sensor seats on the mount will shift them by a few mm and a fraction of a degree. Once everything is printed and mounted, refine them with a target-based or targetless LiDAR–camera calibration.
-- The script assumes the Mid-360 point-cloud origin is **47 mm above the sensor's base** (`LIDAR_ORIGIN_H`). Check this against the Mid-360 manual drawing; any error goes straight into the Z/X translation.
-- The M3 slots on the lidar plate fit square hole patterns of 24–42 mm per side. Check them against your unit before printing.
+- The Mid-360S point-cloud origin is **47.0 mm above the sensor's base** (`LIDAR_ORIGIN_H`, from the user manual's drawing). On the reference rig the measured scan-axis tilt is 45.3° and the lidar origin sits **13.0 cm above the mount's bottom edge**, which is what to add to the mount height when entering the lidar height in the UI.
+- **Screw access:** only the two **downhill** M3 screws can be fitted. The two uphill holes have ~2 mm of clearance below the plate before the back plate, too little for a screw head. Two screws plus the locating pins hold the sensor; double-sided foam tape also works.
+- **Connector:** it faces uphill; flat against a wall, the M12 plug and its 60 mm cable bend radius need more room than the ~22 mm left, so prefer the pole mount.
+- **Calibrated values** for the reference rig are in [`rgb_lidar_fusion/config/mount_extrinsics.yaml`](../../rgb_lidar_fusion/config/mount_extrinsics.yaml) (camera rolled ~0.7° relative to the CAD values below).

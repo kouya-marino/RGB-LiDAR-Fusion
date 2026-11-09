@@ -1,4 +1,4 @@
-"""Parametric mount: Livox Mid-360 (scan axis 45 deg up) + RealSense D435i (20 deg down).
+"""Parametric mount: Livox Mid-360S (scan axis 45 deg up) + RealSense D435i (20 deg down).
 Frame: X = forward (away from wall), Y = sideways, Z = up. Units: mm.
 Run (from this folder): python3 mid360_45_d435i_20down_mount_strong.py > extrinsics.txt
   -> writes mid360_45_d435i_20down_mount_strong.stl and prints the design extrinsics.
@@ -14,13 +14,20 @@ LIDAR_AXIS_DEG = 45          # lidar axis angle above horizontal
 PLATE_TILT = 90 - LIDAR_AXIS_DEG   # plate angle from horizontal (45); lidar-to-camera pitch = PLATE_TILT - CAM_TILT = 25
 T = 7.0                      # general wall thickness (was 5)
 RIB = 6.0                    # rib / gusset thickness (was 4)
-LIDAR_ORIGIN_H = 0.047       # Mid-360 point-cloud origin height above its base [m] - CHECK manual drawing
+LIDAR_ORIGIN_H = 0.047       # Mid-360S point-cloud origin O above its base [m] (manual: 47.0 mm)
 W = 100.0                    # back plate width (Y)
 H = 120.0                    # back plate height (Z)
-PLATE = 66.0                 # lidar plate size (Mid-360 base is 65 x 65)
+PLATE = 66.0                 # lidar plate size (Mid-360S base is 65 x 65)
 M3 = 3.4                     # M3 clearance
-SLOT_R = (17.0, 30.0)        # radial M3 slots on diagonals -> fits square hole
-                             # patterns with 24-42 mm side (verify on your unit!)
+# Mid-360S bottom (user manual v1.0 2026.04, Dimensions): 4x M3 (5 mm deep) on a
+# 48 x 36 mm rectangle centred on the body; 48 mm along the lidar X axis.
+HOLES_XY = (48.0, 36.0)
+# Locating holes (dia 3.0, 1.8 deep) on the X centreline: a round one 16 mm and a
+# slot 23 mm from centre, on opposite sides along Y. The drawing leaves the side
+# ambiguous, so pin holes go at both +-16 and +-23: pins fit whichever pair
+# matches. Sized for 3 mm dowel pins (press fit; printers shrink holes slightly).
+PIN_D = 3.0
+PIN_Y = (16.0, 23.0)
 CAM_TILT = 20               # camera pitch down (deg); 0 = straight
 SHELF_LEN = 75.0             # camera shelf length (X)
 CAM_X = 57.5                 # camera 1/4"-20 screw position (X)
@@ -60,16 +67,16 @@ for zc in (39, 53):                     # hose-clamp slots for pole mounting
 for h in holes + slots:
     back = back - h
 
-# ---------------- lidar plate (tilted 25 deg) ----------------
+# ---------------- lidar plate (tilted 45 deg) ----------------
 plate = box(0, PLATE, -PLATE / 2, PLATE / 2, -T, 0)
 c = PLATE / 2
-for ang in (45, 135, 225, 315):
-    a = math.radians(ang)
-    p0 = (c + SLOT_R[0] * math.cos(a), SLOT_R[0] * math.sin(a))
-    p1 = (c + SLOT_R[1] * math.cos(a), SLOT_R[1] * math.sin(a))
-    s0 = cyl(M3, 20).translate([p0[0], p0[1], 0])
-    s1 = cyl(M3, 20).translate([p1[0], p1[1], 0])
-    plate = plate - Manifold.batch_hull([s0, s1])
+# plate-local +x runs downhill = lidar +X (connector on -X faces uphill)
+for sx in (-1, 1):
+    for sy in (-1, 1):
+        plate = plate - cyl(M3, 20).translate([c + sx * HOLES_XY[0] / 2, sy * HOLES_XY[1] / 2, 0])
+for y in PIN_Y:
+    for sy in (-1, 1):
+        plate = plate - cyl(PIN_D, 20).translate([c, sy * y, 0])
 plate = plate.rotate([0, PLATE_TILT, 0]).translate([T, 0, H])
 
 # ---------------- side ribs under plate ----------------
