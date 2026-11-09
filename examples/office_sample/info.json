@@ -1,0 +1,14 @@
+{
+  "started": "2026-11-09T16:19:47+09:00",
+  "duration_s": 27.1,
+  "scans": 269,
+  "colored_points": 55069,
+  "voxel_m": 0.03,
+  "lidar_height_m": 0.852,
+  "path_length_m": 0.12,
+  "frame": "map: gravity-levelled, floor z=0, origin below the start lidar, +X forward",
+  "name": "office_sample",
+  "full_points": 70048,
+  "full_voxel_m": 0.05,
+  "exports": []
+}

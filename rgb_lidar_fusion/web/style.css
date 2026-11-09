@@ -264,6 +264,11 @@ input[type="number"].nondefault { border-color: var(--warn); box-shadow: 0 0 0 1
 }
 #fast-note:empty { display: none; }
 
+/* ---- embed=1: just the 3D view (shareable views, rendered images) */
+body.embed .topbar, body.embed .sidebar, body.embed .banner, body.embed .help,
+body.embed .overlay { display: none !important; }
+body.embed .layout { grid-template-columns: 1fr; }
+
 /* ---- narrow screens --------------------------------------------------- */
 @media (max-width: 820px) {
   .layout { grid-template-columns: 1fr; grid-template-rows: 60vh auto; }
