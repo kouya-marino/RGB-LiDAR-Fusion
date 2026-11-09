@@ -109,7 +109,7 @@ This starts the sensors, the colorizer and the web UI. Open **http://localhost:8
 | | |
 |---|---|
 | **Live preview** | Before recording: the latest colored scan over the latest full scan, levelled, with the rig's position and heading. |
-| **Record a map** | Name it, enter the **lidar height above the floor** (cm, to the centre of the dome; default 100), wait for *Odometry · Camera · Held still* to turn green, press *Start recording* while holding the rig still, then walk slowly. *Stop & save* (or *Cancel* to discard). The maps and the path walked grow live in 3D. |
+| **Record a map** | Name it, enter the **lidar height above the floor** (cm, to the centre of the dome; default 70, set in `colorizer.yaml`), wait for *Odometry · Camera · Held still* to turn green, press *Start recording* while holding the rig still, then walk slowly. *Stop & save* (or *Cancel* to discard). The maps and the path walked grow live in 3D. |
 | **Layers** | Colored points, full lidar and path on/off; color the full lidar by height, intensity or gray; point size; fit view. |
 | **Saved maps** | View any saved map in 3D, or download its files: the map itself and each robot export. `?map=<name>` links straight to one. |
 
@@ -141,7 +141,7 @@ Recording from the command line:
 
 ```bash
 ros2 param set /colorizer map_name kitchen
-ros2 param set /colorizer lidar_height 1.0
+ros2 param set /colorizer lidar_height 0.70
 ros2 service call /colorizer/start_map std_srvs/srv/Trigger
 ros2 service call /colorizer/stop_map std_srvs/srv/Trigger    # saves output/kitchen/
 ```

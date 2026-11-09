@@ -139,7 +139,7 @@ class ColorizerNode(Node):
         p('max_buffered_images', 30)
         p('image_queue', 5)
         p('max_wait', 0.3)               # s, how long a scan may wait for its image
-        p('lidar_height', 1.0)           # m, lidar origin above the floor at Start
+        p('lidar_height', 0.70)          # m, lidar origin above the floor at Start
         p('static_gyro', 0.05)           # rad/s, "held still" threshold for Start
         p('level_window', 1.0)           # s of IMU averaged for gravity
         p('accumulate', False)           # start recording `map_name` at launch

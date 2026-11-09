@@ -1,0 +1,29 @@
+  1. Start the container (the image is already built):
+  cd ~/workspaces/RGB-LiDAR-Fusion
+  docker/run.sh
+  To open a second shell into the same container later, run docker/run.sh again.
+
+  2. Inside the container, build and launch:
+  cd /ws && colcon build && source install/setup.bash
+  ros2 launch rgb_lidar_fusion colorize.launch.py output_dir:=/ws/src/rgb_lidar_fusion/output
+  That starts the lidar, FAST-LIO, the camera, the colorizer and the web UI. Keep the rig still for a few seconds while FAST-LIO initialises. You only need colcon build
+  again after code changes.
+
+  3. Open the UI: http://localhost:8080. You can also use a phone on the same Wi-Fi while you walk: http://192.168.2.240:8080, which is this laptop's Wi-Fi address right
+  now.
+
+  4. Record:
+  1. Type a map name and the lidar height in cm (to the centre of the dome).
+  2. Wait until Odometry · Camera · Held still are all green.
+  3. Hold still and press Start recording, then walk slowly.
+  4. Press Stop & save.
+
+  The files appear on the host in ~/workspaces/RGB-LiDAR-Fusion/output/<name>/, including the go2/ and g1/ copies.
+
+  5. Stop: press Ctrl-C in the launch terminal. If a map is still recording, it's saved automatically.
+
+  Options:
+  - Add rviz:=true to also open RViz.
+  - Add odometry:=false for a rig that stays in one place.
+  - Add color_profile:=1280x720x15 for lighter camera data.
+

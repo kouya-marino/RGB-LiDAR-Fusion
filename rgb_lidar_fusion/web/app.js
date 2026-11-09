@@ -285,6 +285,11 @@ function renderStatus() {
   $('st-walk').textContent = s.recording ? `${pathLength(s.path || []).toFixed(1)} m` : '–';
   $('st-time').textContent = s.recording ? fmtTime(s.elapsed_s) : '–';
 
+  // default height = the colorizer's configured lidar_height, unless this
+  // browser remembers the last one used or the user is typing
+  if (!heightFromBrowser && !heightTouched && s.lidar_height && !s.recording) {
+    $('lidar-height').value = Math.round(s.lidar_height * 100);
+  }
   $('rd-odom').classList.toggle('ok', !!s.odometry_ok);
   $('rd-cam').classList.toggle('ok', !!s.camera_ok);
   $('rd-still').classList.toggle('ok', !!s.still);
@@ -489,10 +494,13 @@ $('btn-refresh').addEventListener('click', loadMaps);
 
 // ---- start ----------------------------------------------------------------
 $('map-name').placeholder = defaultName();
+let heightFromBrowser = false;
 try {
   const saved = Number(localStorage.getItem('lidarHeightCm'));
-  if (saved >= 5 && saved <= 500) $('lidar-height').value = saved;
+  if (saved >= 5 && saved <= 500) { $('lidar-height').value = saved; heightFromBrowser = true; }
 } catch { /* storage unavailable: keep the default */ }
+let heightTouched = false;
+$('lidar-height').addEventListener('input', () => { heightTouched = true; });
 pollStatus();
 loadMaps();
 setInterval(loadMaps, 15000);
