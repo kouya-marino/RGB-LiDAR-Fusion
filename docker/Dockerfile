@@ -47,6 +47,15 @@ RUN cd /opt/livox_ws/src/livox_ros_driver2 \
     && colcon build --cmake-args -DROS_EDITION=ROS2 -DDISTRO_ROS=humble -DCMAKE_BUILD_TYPE=Release \
     && rm -rf build log
 
+# FAST-LIO2 (ROS 2 port, GPL-2.0), vendored: lidar-inertial odometry for mapping
+# while moving. Built in the same underlay, on top of livox_ros_driver2.
+COPY third_party/fast_lio /opt/livox_ws/src/fast_lio
+RUN source /opt/ros/humble/setup.bash \
+    && source /opt/livox_ws/install/setup.bash \
+    && cd /opt/livox_ws \
+    && colcon build --packages-select fast_lio --cmake-args -DCMAKE_BUILD_TYPE=Release \
+    && rm -rf build log
+
 # Non-root user matching the host UID/GID, so files written to the bind-mounted repo stay yours
 RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" -m -s /bin/bash "${USERNAME}" \

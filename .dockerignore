@@ -2,3 +2,4 @@
 *
 !docker/entrypoint.sh
 !third_party/livox/
+!third_party/fast_lio/

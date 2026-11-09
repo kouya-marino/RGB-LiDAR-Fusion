@@ -254,3 +254,13 @@ def test_xyzi_to_msg_roundtrip():
     msg.data = bytes(msg.data)
     np.testing.assert_allclose(pointcloud2_to_xyz(msg), [[1, 2, 3]])
     np.testing.assert_array_equal(pointcloud2_field(msg, 'intensity'), [77.])
+
+
+def test_matrix_to_quat_roundtrip_including_180_degrees():
+    pytest.importorskip('tf2_ros')
+    from rgb_lidar_fusion.colorizer_node import matrix_to_quat
+    from rgb_lidar_fusion.extrinsics import se3
+    for rpy in ([0, 0, 0], [10, -20, 30], [180, 0, 0], [0, 180, 0], [0, 0, 180],
+                [-65, 0, -90], [179.9, 0.1, 0]):
+        R = se3(rpy, [0, 0, 0])[:3, :3]
+        np.testing.assert_allclose(quat_to_matrix(np.array(matrix_to_quat(R))), R, atol=1e-9)

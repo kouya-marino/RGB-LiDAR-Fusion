@@ -4,12 +4,16 @@ Serves one static page (Three.js, vendored) plus a small JSON/binary API:
 
   GET  /api/status                     colorizer status (recording, counts, ...)
   GET  /api/live/{scan,lidar,colored,full}.bin
-                                       latest coloured scan / raw lidar scan /
+                                       latest coloured scan / full lidar scan /
                                        growing coloured map / growing full map
+                                       (all in the levelled map frame)
   GET  /api/maps                       saved maps (from each folder's info.json)
   GET  /api/maps/<name>/{colored,full}.bin
-  GET  /api/maps/<name>/files/<file>   download colored|full .pcd|.ply, info.json
-  POST /api/start  {"name": "..."}     start recording a map
+  GET  /api/maps/<name>/files/[<robot>/]<file>
+                                       download colored|full .pcd|.ply (map frame
+                                       or a robot export), info.json, trajectory.csv
+  POST /api/start  {"name": "...", "lidar_height": 1.0}
+                                       start recording a map
   POST /api/stop                       stop and save
   POST /api/cancel                     stop and discard
 
@@ -45,7 +49,8 @@ CONTENT_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; c
                  '.css': 'text/css; charset=utf-8', '.json': 'application/json',
                  '.pcd': 'application/octet-stream', '.ply': 'application/octet-stream',
                  '.png': 'image/png', '.svg': 'image/svg+xml'}
-MAP_FILES = ('colored.pcd', 'colored.ply', 'full.pcd', 'full.ply', 'info.json')
+CLOUD_FILES = ('colored.pcd', 'colored.ply', 'full.pcd', 'full.ply')
+MAP_FILES = CLOUD_FILES + ('info.json', 'trajectory.csv')
 
 
 def encode_colored_msg(msg: PointCloud2) -> bytes:
@@ -55,12 +60,16 @@ def encode_colored_msg(msg: PointCloud2) -> bytes:
     return encode_xyzrgb(xyz, unpack_rgb(arr['rgb']))
 
 
-def encode_lidar_msg(msg: PointCloud2, min_range: float = 0.1) -> bytes:
-    """Any lidar PointCloud2 (raw scan or lidar_map) -> web binary with intensity."""
+def encode_lidar_msg(msg: PointCloud2, min_range: float = 0.0) -> bytes:
+    """Any lidar PointCloud2 -> web binary with intensity. `min_range` > 0 drops
+    points near the frame origin (raw scans: the sensor's no-returns); the
+    map-frame clouds the colorizer publishes need no filtering."""
     xyz = pointcloud2_to_xyz(msg)
     inten = pointcloud2_field(msg, 'intensity')
-    keep = np.linalg.norm(xyz, axis=1) > min_range
-    return encode_xyzi(xyz[keep], inten[keep])
+    if min_range > 0:
+        keep = np.linalg.norm(xyz, axis=1) > min_range
+        xyz, inten = xyz[keep], inten[keep]
+    return encode_xyzi(xyz, inten)
 
 
 def encode_saved(path: str) -> bytes:
@@ -103,7 +112,6 @@ class WebUiNode(Node):
         self.declare_parameter('port', 8080)
         self.declare_parameter('output_dir', os.path.join(os.getcwd(), 'output'))
         self.declare_parameter('colorizer', '/colorizer')
-        self.declare_parameter('lidar_topic', '/livox/lidar')
         self.web_root = os.path.join(share, 'web')
         self.vendor_root = os.path.join(share, 'vendor')
         self.output_dir = str(self.get_parameter('output_dir').value)
@@ -117,7 +125,7 @@ class WebUiNode(Node):
         }
         sub = self.create_subscription
         sub(PointCloud2, '/colored_scan', self.live['scan'].put, 1)
-        sub(PointCloud2, str(self.get_parameter('lidar_topic').value), self.live['lidar'].put, 1)
+        sub(PointCloud2, '/lidar_scan', self.live['lidar'].put, 1)
         sub(PointCloud2, '/colored_map', self.live['colored'].put, 1)
         sub(PointCloud2, '/lidar_map', self.live['full'].put, 1)
         self._status: Optional[dict] = None
@@ -160,15 +168,22 @@ class WebUiNode(Node):
             return False, 'colorizer did not answer'
         return True, future.result()
 
-    def start(self, name: str):
+    def start(self, name: str, lidar_height: float):
         if not valid_map_name(name):
             return False, 'name must be 1-64 of A-Z a-z 0-9 _ -'
-        req = SetParameters.Request(parameters=[Parameter(
-            name='map_name', value=ParameterValue(type=ParameterType.PARAMETER_STRING,
-                                                  string_value=name))])
+        if not 0.05 <= lidar_height <= 5.0:
+            return False, 'lidar height must be 5-500 cm'
+        req = SetParameters.Request(parameters=[
+            Parameter(name='map_name', value=ParameterValue(
+                type=ParameterType.PARAMETER_STRING, string_value=name)),
+            Parameter(name='lidar_height', value=ParameterValue(
+                type=ParameterType.PARAMETER_DOUBLE, double_value=float(lidar_height)))])
         ok, res = self._call(self.param_cli, req)
         if not ok:
             return False, res
+        bad = [r.reason for r in res.results if not r.successful]
+        if bad:
+            return False, 'colorizer refused the settings: {}'.format('; '.join(bad))
         return self.trigger('start')
 
     def trigger(self, which: str):
@@ -188,8 +203,13 @@ class WebUiNode(Node):
                             info = json.load(fh)
                     except (OSError, ValueError):
                         continue
-                    info['files'] = [f for f in MAP_FILES
-                                     if os.path.isfile(os.path.join(self.output_dir, name, f))]
+                    folder = os.path.join(self.output_dir, name)
+                    files = [f for f in MAP_FILES if os.path.isfile(os.path.join(folder, f))]
+                    for e in info.get('exports', []):
+                        files += ['{}/{}'.format(e['name'], f) for f in CLOUD_FILES
+                                  if valid_map_name(e.get('name', '')) and
+                                  os.path.isfile(os.path.join(folder, e['name'], f))]
+                    info['files'] = files
                     maps.append(info)
         return sorted(maps, key=lambda m: m.get('started', ''), reverse=True)
 
@@ -270,6 +290,10 @@ class _Handler(BaseHTTPRequestHandler):
                     return self._send(HTTPStatus.OK, body)
                 if len(parts) == 5 and parts[3] == 'files' and parts[4] in MAP_FILES:
                     return self._file(os.path.join(n.output_dir, name), parts[4], download=True)
+                if len(parts) == 6 and parts[3] == 'files' and valid_map_name(parts[4]) \
+                        and parts[5] in CLOUD_FILES:     # a robot export
+                    return self._file(os.path.join(n.output_dir, name, parts[4]), parts[5],
+                                      download=True)
             return self._send(HTTPStatus.NOT_FOUND, b'not found', 'text/plain')
         except (BrokenPipeError, ConnectionResetError):
             pass
@@ -282,7 +306,12 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError:
             return self._json({'ok': False, 'message': 'bad JSON'}, HTTPStatus.BAD_REQUEST)
         if path == '/api/start':
-            ok, msg = n.start(str(body.get('name', '')).strip())
+            try:
+                height = float(body.get('lidar_height', 1.0))
+            except (TypeError, ValueError):
+                return self._json({'ok': False, 'message': 'lidar_height must be a number'},
+                                  HTTPStatus.BAD_REQUEST)
+            ok, msg = n.start(str(body.get('name', '')).strip(), height)
         elif path in ('/api/stop', '/api/cancel'):
             ok, msg = n.trigger(path.rsplit('/', 1)[1])
         else:

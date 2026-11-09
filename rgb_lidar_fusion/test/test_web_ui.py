@@ -39,9 +39,11 @@ def test_colored_msg_roundtrip():
     np.testing.assert_array_equal(got_rgb, rgb)
 
 
-def test_lidar_msg_drops_zero_points():
+def test_lidar_msg_keeps_all_points_by_default_and_filters_on_request():
     xyz = np.array([[0, 0, 0], [3, 0, 0]], np.float32)       # Mid-360 no-return = origin
-    got_xyz, got_i = _decode_i(encode_lidar_msg(_bytes_msg(xyzi_to_msg(xyz, [1., 9.], 'f', None))))
+    msg = _bytes_msg(xyzi_to_msg(xyz, [1., 9.], 'f', None))
+    assert _decode_i(encode_lidar_msg(msg))[0].shape == (2, 3)          # map frame: keep
+    got_xyz, got_i = _decode_i(encode_lidar_msg(msg, min_range=0.1))    # raw scan: drop
     np.testing.assert_array_equal(got_xyz, [[3, 0, 0]])
     np.testing.assert_array_equal(got_i, [9.])
 

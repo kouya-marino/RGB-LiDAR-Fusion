@@ -13,7 +13,10 @@ Real-time RGB camera and Livox Mid-360 LiDAR fusion for generating colorized 3D 
 
 - Real-time colorization of every LiDAR scan (10 Hz) from the nearest-in-time RGB frame
 - Occlusion rejection, so foreground objects don't paint their color onto surfaces behind them
-- Map recording with two clouds per map: the **colored** points the camera sees, and the **full** lidar scan (the camera covers only part of the lidar's field of view)
+- **Map while you walk**: FAST-LIO2 lidar-inertial odometry tracks the rig, so it can be carried on a pole
+- Maps are **gravity-levelled** with the floor at z = 0, from the lidar height you enter (the mount tilts the lidar 45°)
+- Two clouds per map: the **colored** points the camera sees, and the **full** lidar scan (the camera covers only part of the lidar's field of view)
+- **Robot exports** on save: the same map re-expressed for a Unitree Go2 (lidar at 45 cm) and G1 (lidar at 125 cm), ready for their localization
 - Best-view voxel map: keeps the sharpest observation of each voxel instead of averaging into mud
 - **Web UI**: watch the map grow in 3D, start / stop / save recordings, browse and download saved maps
 - LiDAR ↔ camera extrinsic read from TF; camera intrinsics from the camera driver
@@ -54,7 +57,7 @@ Everything runs in a ROS 2 Humble Docker container. The host needs only Docker, 
 docker/build.sh
 ```
 
-This builds `rgb-lidar-fusion:humble` with ROS 2 Humble desktop, the RealSense ROS 2 driver, PCL, cv_bridge, and Livox-SDK2 v1.3.1 + livox_ros_driver2 1.2.6. The Livox code is built from the copies in [`third_party/`](third_party/), so it is never fetched from GitHub at build time. The container user gets your host UID/GID, so files it writes into the repo stay yours.
+This builds `rgb-lidar-fusion:humble` with ROS 2 Humble desktop, the RealSense ROS 2 driver, PCL, cv_bridge, Livox-SDK2 v1.3.1 + livox_ros_driver2 1.2.6, and FAST-LIO2 (ROS 2). Livox and FAST-LIO are built from the copies in [`third_party/`](third_party/), so nothing is fetched from GitHub at build time. The container user gets your host UID/GID, so files it writes into the repo stay yours.
 
 ### 2. Network for the LiDAR
 
@@ -89,7 +92,7 @@ cd /ws && colcon build && source install/setup.bash
 ros2 launch rgb_lidar_fusion sensors.launch.py
 ```
 
-This starts the Livox driver (`/livox/lidar` at 10 Hz with ~20k points, `/livox/imu` at 200 Hz), the RealSense color stream (`/camera/camera/color/image_raw`, 1920×1080 at 15 fps; `color_profile:=1280x720x15` for lighter recordings), and the static `livox_frame → camera_link` transform from [`config/mount_extrinsics.yaml`](rgb_lidar_fusion/config/mount_extrinsics.yaml).
+This starts the Livox driver (`/livox/lidar` at 10 Hz with ~20k points, `/livox/imu` at 200 Hz), FAST-LIO2 (`/cloud_registered`, `/Odometry`), the RealSense color stream (`/camera/camera/color/image_raw`, 1920×1080 at 15 fps; `color_profile:=1280x720x15` for lighter recordings), and the static transforms of the rig: `body` (IMU) → `livox_frame` from the Mid-360S manual, and `livox_frame → camera_link` from [`config/mount_extrinsics.yaml`](rgb_lidar_fusion/config/mount_extrinsics.yaml). Keep the rig still for a few seconds after launch while FAST-LIO initializes its IMU. For a rig that never moves, `odometry:=false` skips FAST-LIO.
 
 If the lidar driver logs `Init lds lidar success!` but no `/livox/lidar` topic appears, check the config format. A Mid-360S that gets the plain `MID360` config is discovered but never configured.
 
@@ -105,42 +108,47 @@ This starts the sensors, the colorizer and the web UI. Open **http://localhost:8
 
 | | |
 |---|---|
-| **Live preview** | Before recording: the latest colored scan over the latest raw lidar scan. |
-| **Record a map** | Name it, press *Start recording*, keep the rig still, then *Stop & save* (or *Cancel* to discard). Both maps grow live in the 3D view. |
-| **Layers** | Colored points and full lidar on/off; color the full lidar by height, intensity or gray; point size; fit view. |
-| **Saved maps** | View any saved map in 3D, or download its `.pcd` / `.ply` files. `?map=<name>` links straight to one. |
+| **Live preview** | Before recording: the latest colored scan over the latest full scan, levelled, with the rig's position and heading. |
+| **Record a map** | Name it, enter the **lidar height above the floor** (cm, to the centre of the dome; default 100), wait for *Odometry · Camera · Held still* to turn green, press *Start recording* while holding the rig still, then walk slowly. *Stop & save* (or *Cancel* to discard). The maps and the path walked grow live in 3D. |
+| **Layers** | Colored points, full lidar and path on/off; color the full lidar by height, intensity or gray; point size; fit view. |
+| **Saved maps** | View any saved map in 3D, or download its files: the map itself and each robot export. `?map=<name>` links straight to one. |
 
 Each map is saved in its own folder:
 
 ```
 output/<name>/
-  colored.pcd  colored.ply   # x y z rgb    - points the camera sees, best view per 3 cm voxel
+  colored.pcd  colored.ply   # x y z rgb       - points the camera saw, best view per 3 cm voxel
   full.pcd     full.ply      # x y z intensity - every lidar point, one per 3 cm voxel
-  info.json                  # start time, duration, scans, point counts
+  go2/  colored.* full.*     # the same, with the origin at a Go2 lidar (45 cm above the floor)
+  g1/   colored.* full.*     # the same, with the origin at a G1 lidar (125 cm above the floor)
+  trajectory.csv             # t, x, y, z of the lidar along the walk
+  info.json                  # start time, duration, distance walked, lidar height, point counts, exports
 ```
 
-Without odometry, a map assumes the rig is **stationary**; moving it while recording smears the map.
+**Frames.** The map frame is gravity-levelled: **floor at z = 0**, origin on the floor directly below the lidar where recording started, **+X** = the direction the rig faced at the start (its lidar +X, flattened). A robot export puts the origin at that robot's lidar instead (`z -= height`), as if the robot's lidar had started where the rig's did, so the robot can start localization at the map origin. Heights live in [`config/colorizer.yaml`](rgb_lidar_fusion/config/colorizer.yaml) (`export_names`, `export_heights`, `export_flip`); `export_flip` is only for a robot whose driver reports its lidar upside down (a Livox driver configured with roll 180, like the G1's, already reports it upright).
 
 ### ROS interface
 
 | | |
 |---|---|
-| `/colored_scan` | Each colored scan, XYZRGB in `livox_frame`, 10 Hz (only points the camera sees) |
-| `/colored_map`, `/lidar_map` | The growing maps while recording (1 s / 2 s) |
+| `/colored_scan`, `/lidar_scan` | Each scan in the `map` frame: colored points (only what the camera sees) / all points with intensity, 10 Hz |
+| `/colored_map`, `/lidar_map` | The growing maps while recording (1 s / 2 s; the live full map is thinned to 10 cm) |
+| TF `map → camera_init` | The levelled map frame on top of FAST-LIO's world frame |
 | `/colorizer/status` | JSON status, 1 Hz |
-| `/colorizer/start_map`, `stop_map`, `cancel_map`, `save_cloud` | `std_srvs/Trigger`; the name comes from the `map_name` parameter |
+| `/colorizer/start_map`, `stop_map`, `cancel_map`, `save_cloud` | `std_srvs/Trigger`; name and height come from the `map_name` and `lidar_height` parameters |
 
 Recording from the command line:
 
 ```bash
 ros2 param set /colorizer map_name kitchen
+ros2 param set /colorizer lidar_height 1.0
 ros2 service call /colorizer/start_map std_srvs/srv/Trigger
 ros2 service call /colorizer/stop_map std_srvs/srv/Trigger    # saves output/kitchen/
 ```
 
-Launch arguments: `sensors:=false` (sensors already running, or playing a bag), `web:=false`, `port:=8080`, `rviz:=true`, `accumulate:=true` (start recording at launch), `color_profile:=WxHxFPS`. Colorizer tuning is in [`config/colorizer.yaml`](rgb_lidar_fusion/config/colorizer.yaml).
+Launch arguments: `odometry:=false` (stationary rig, no FAST-LIO), `sensors:=false` (sensors already running, or playing a bag), `web:=false`, `port:=8080`, `rviz:=true`, `accumulate:=true` (start recording at launch), `color_profile:=WxHxFPS`. Colorizer tuning is in [`config/colorizer.yaml`](rgb_lidar_fusion/config/colorizer.yaml).
 
-**How it works.** The driver stamps each scan at the start of its 100 ms sweep. The colorizer waits until an image from after the sweep's midpoint has arrived, picks the nearest one, and drops the scan if the gap exceeds `max_dt` (50 ms). It then projects the points through the camera model, rejects points hidden behind nearer ones, and samples their colors. Images are subscribed **reliable**: a full-resolution frame (6.2 MB at 1080p) is larger than DDS shared memory, and best-effort delivery lost about half the frames in testing. With reliable delivery, 1080p at 15 fps arrives without gaps; about 95% of scans are colored while recording.
+**How it works.** FAST-LIO2 registers each scan into its world frame and publishes the rig's pose as TF. For each scan the colorizer waits until an image from after the sweep's midpoint has arrived, picks the nearest one (dropping the scan if the gap exceeds `max_dt`, 50 ms), looks up where the camera was **at that image's timestamp** through TF (`camera_init → body → livox_frame → camera_link → camera_color_optical_frame`, interpolated between odometry poses), projects the points, rejects points hidden behind nearer ones, and samples their colors. Scans taken while the rig turns faster than 30°/s are not colored (motion smears color across edges) but still go into the full map. When you press Start, the accelerometer's gravity direction (rig held still) and the height you entered fix the levelled map frame. Images are subscribed **reliable**: a full-resolution frame (6.2 MB at 1080p) is larger than DDS shared memory, and best-effort delivery lost about half the frames in testing. With reliable delivery, 1080p at 15 fps arrives without gaps; with odometry running, over 99% of scans are colored.
 
 ## Example output
 
@@ -153,7 +161,8 @@ Sample colorized point clouds (`.pcd` / `.ply`) will be added under [`examples/`
 - [x] Best-view voxel map for a stationary rig, PCD/PLY export
 - [x] Full lidar map saved alongside the colored map
 - [x] Web UI: live 3D map, recording controls, saved maps
-- [ ] Mapping while moving (LiDAR odometry, e.g. FAST-LIO)
+- [x] Mapping while moving (FAST-LIO2), gravity-levelled maps with the floor at z = 0
+- [x] Robot map exports (Unitree Go2, G1)
 - [ ] LiDAR–camera extrinsic calibration tool
 - [ ] ROS 1 support
 - [ ] Calibration guide

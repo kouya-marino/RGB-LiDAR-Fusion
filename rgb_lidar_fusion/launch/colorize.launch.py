@@ -1,14 +1,14 @@
-"""Sensors + live colorizer + web UI (+ optional RViz).
+"""Sensors + odometry + live colorizer + web UI (+ optional RViz).
 
-    ros2 launch rgb_lidar_fusion colorize.launch.py
-    # then open http://localhost:8080
     ros2 launch rgb_lidar_fusion colorize.launch.py output_dir:=/ws/src/rgb_lidar_fusion/output
+    # then open http://localhost:8080
+    ros2 launch rgb_lidar_fusion colorize.launch.py odometry:=false   # stationary rig
 """
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -22,16 +22,25 @@ def generate_launch_description():
     sensors = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(SHARE, 'launch', 'sensors.launch.py')),
         condition=IfCondition(LaunchConfiguration('sensors')),
-        launch_arguments={'color_profile': LaunchConfiguration('color_profile')}.items(),
+        launch_arguments={'color_profile': LaunchConfiguration('color_profile'),
+                          'odometry': LaunchConfiguration('odometry')}.items(),
     )
-    colorizer = Node(
-        package='rgb_lidar_fusion', executable='colorizer', name='colorizer',
-        output='screen',
-        parameters=[os.path.join(SHARE, 'config', 'colorizer.yaml'), {
-            'accumulate': LaunchConfiguration('accumulate'),
-            'output_dir': output_dir,
-        }],
-    )
+
+    def colorizer(context):
+        odometry = LaunchConfiguration('odometry').perform(context).lower() in ('true', '1')
+        return [Node(
+            package='rgb_lidar_fusion', executable='colorizer', name='colorizer',
+            output='screen',
+            parameters=[os.path.join(SHARE, 'config', 'colorizer.yaml'), {
+                'accumulate': LaunchConfiguration('accumulate'),
+                'output_dir': output_dir,
+                # FAST-LIO's registered scans (world frame, stamped at the sweep
+                # END) or raw scans (lidar frame, stamped at the sweep START)
+                'cloud_topic': '/cloud_registered' if odometry else '/livox/lidar',
+                'scan_mid_offset': -0.05 if odometry else 0.05,
+            }],
+        )]
+
     web_ui = Node(
         package='rgb_lidar_fusion', executable='web_ui', name='web_ui', output='screen',
         condition=IfCondition(LaunchConfiguration('web')),
@@ -45,6 +54,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('sensors', default_value='true',
                               description='false: use sensors already running (or a bag)'),
+        DeclareLaunchArgument('odometry', default_value='true',
+                              description='FAST-LIO2: map while carrying the rig'),
         DeclareLaunchArgument('accumulate', default_value='false',
                               description='true: start recording a map at launch'),
         DeclareLaunchArgument('output_dir', default_value=os.path.join(os.getcwd(), 'output')),
@@ -53,7 +64,7 @@ def generate_launch_description():
         DeclareLaunchArgument('port', default_value='8080'),
         DeclareLaunchArgument('rviz', default_value='false'),
         sensors,
-        colorizer,
+        OpaqueFunction(function=colorizer),
         web_ui,
         rviz,
     ])

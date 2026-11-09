@@ -21,6 +21,7 @@
     <dl class="stats">
       <div><dt>Colored</dt><dd id="st-colored">–</dd></div>
       <div><dt>Full lidar</dt><dd id="st-full">–</dd></div>
+      <div><dt>Walked</dt><dd id="st-walk">–</dd></div>
       <div><dt>Time</dt><dd id="st-time">–</dd></div>
     </dl>
   </header>
@@ -29,13 +30,23 @@
     <aside class="sidebar">
       <section class="card" id="rec-card">
         <h2>Record a map</h2>
-        <p class="hint">Keep the rig still while recording. Two clouds are saved: the camera-colored points and the full lidar scan.</p>
+        <p class="hint">Hold the rig still when you press Start (that levels the map), then walk slowly. Saved: the camera-colored points, the full lidar scan, and one copy per robot.</p>
         <div id="rec-idle">
           <label class="field">
             <span>Map name</span>
             <input id="map-name" autocomplete="off" spellcheck="false" maxlength="64" pattern="[A-Za-z0-9_-]{1,64}">
           </label>
+          <label class="field">
+            <span>Lidar height above the floor (cm) <span class="sub">to the centre of the dome</span></span>
+            <input id="lidar-height" type="number" inputmode="decimal" min="5" max="500" step="1" value="100">
+          </label>
+          <ul class="ready" id="ready" aria-label="Ready to record">
+            <li id="rd-odom">Odometry</li>
+            <li id="rd-cam">Camera</li>
+            <li id="rd-still">Held still</li>
+          </ul>
           <button class="btn primary" id="btn-start"><span class="rec-dot"></span>Start recording</button>
+          <p class="hint small" id="exports-note"></p>
         </div>
         <div id="rec-active" hidden>
           <div class="rec-name"><span class="rec-dot live"></span><span id="rec-name"></span></div>
@@ -51,6 +62,7 @@
         <h2>Layers</h2>
         <label class="check"><input type="checkbox" id="show-colored" checked><span class="swatch rgb"></span>Colored points</label>
         <label class="check"><input type="checkbox" id="show-full" checked><span class="swatch full"></span>Full lidar</label>
+        <label class="check"><input type="checkbox" id="show-path" checked><span class="swatch path"></span>Path walked</label>
         <label class="field inline">
           <span>Full lidar color</span>
           <select id="full-color">

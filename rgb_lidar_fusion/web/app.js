@@ -43,6 +43,42 @@ const coloredPts = new THREE.Points(new THREE.BufferGeometry(), material(3));
 coloredPts.renderOrder = 1;
 scene.add(fullPts, coloredPts);
 
+// path walked (orange), start (green), the lidar now (red, with heading)
+const pathLine = new THREE.Line(new THREE.BufferGeometry(),
+  new THREE.LineBasicMaterial({ color: 0xff9f1a }));
+const marker = (color) => new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 12),
+  new THREE.MeshBasicMaterial({ color }));
+const startMark = marker(0x3fb950);
+const nowMark = marker(0xff4d4f);
+const heading = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 0.5, 0xff4d4f, 0.15, 0.1);
+nowMark.add(heading);
+startMark.visible = nowMark.visible = false;
+const pathGroup = new THREE.Group();
+pathGroup.add(pathLine, startMark, nowMark);
+scene.add(pathGroup);
+
+function setPath(path, pose) {
+  const arr = new Float32Array(path.length * 3);
+  path.forEach(([x, y], i) => { arr[i * 3] = x; arr[i * 3 + 1] = y; arr[i * 3 + 2] = 0.01; });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  pathLine.geometry.dispose();
+  pathLine.geometry = g;
+  startMark.visible = path.length > 0;
+  if (path.length) startMark.position.set(path[0][0], path[0][1], 0.01);
+  nowMark.visible = !!pose;
+  if (pose) {
+    nowMark.position.set(pose.x, pose.y, pose.z);
+    heading.setDirection(new THREE.Vector3(Math.cos(pose.yaw), Math.sin(pose.yaw), 0));
+  }
+}
+
+function pathLength(path) {
+  let d = 0;
+  for (let i = 1; i < path.length; i++) d += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
+  return d;
+}
+
 function resize() {
   const w = host.clientWidth || 1, h = host.clientHeight || 1;
   renderer.setSize(w, h, false);
@@ -192,6 +228,7 @@ async function openSaved(name) {
   state.savedName = name;
   clearTimeout(liveTimer);
   clearClouds();
+  setPath([], null);
   state.touched = false;
   $('btn-live').hidden = false;
   renderBanner('Loading…');
@@ -245,7 +282,17 @@ function renderStatus() {
   }
   $('st-colored').textContent = s.recording ? fmtInt(s.colored_points) : '–';
   $('st-full').textContent = s.recording ? fmtInt(s.full_points) : '–';
+  $('st-walk').textContent = s.recording ? `${pathLength(s.path || []).toFixed(1)} m` : '–';
   $('st-time').textContent = s.recording ? fmtTime(s.elapsed_s) : '–';
+
+  $('rd-odom').classList.toggle('ok', !!s.odometry_ok);
+  $('rd-cam').classList.toggle('ok', !!s.camera_ok);
+  $('rd-still').classList.toggle('ok', !!s.still);
+  const ex = s.exports || [];
+  $('exports-note').textContent = ex.length
+    ? 'On save, also writes ' + ex.map((e) => `${e.name} (lidar ${Math.round(e.height * 100)} cm${e.flip ? ', upside down' : ''})`).join(' and ') + '.'
+    : '';
+  if (state.mode === 'live') setPath(s.recording ? (s.path || []) : [], s.pose || null);
 
   $('rec-idle').hidden = !!s.recording;
   $('rec-active').hidden = !s.recording;
@@ -318,7 +365,14 @@ $('btn-start').addEventListener('click', async () => {
     input.focus();
     return;
   }
-  const r = await post('/api/start', { name });
+  const cm = Number($('lidar-height').value);
+  if (!(cm >= 5 && cm <= 500)) {
+    flash('Lidar height must be 5–500 cm', 'error');
+    $('lidar-height').focus();
+    return;
+  }
+  try { localStorage.setItem('lidarHeightCm', String(cm)); } catch { /* private mode */ }
+  const r = await post('/api/start', { name, lidar_height: cm / 100 });
   flash(r.message, r.ok ? 'ok' : 'error');
   if (r.ok) {
     input.value = '';
@@ -342,6 +396,7 @@ $('btn-cancel').addEventListener('click', async () => {
 // ---- layers ---------------------------------------------------------------
 $('show-colored').addEventListener('change', (e) => { coloredPts.visible = e.target.checked; });
 $('show-full').addEventListener('change', (e) => { fullPts.visible = e.target.checked; });
+$('show-path').addEventListener('change', (e) => { pathGroup.visible = e.target.checked; });
 $('full-color').addEventListener('change', (e) => {
   state.fullColor = e.target.value;
   if (state.fullData) setFull(state.fullData);
@@ -396,17 +451,34 @@ function renderMaps(maps) {
     // stored with its UTC offset; shown in the viewer's local time
     const when = m.started ? new Date(m.started).toLocaleString([], {
       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-    meta.textContent = `${when} · ${fmtTime(m.duration_s)} · ${fmtInt(m.colored_points)} colored · ${fmtInt(m.full_points)} full`;
+    const walked = m.path_length_m != null ? ` · ${m.path_length_m} m walked` : '';
+    const h = m.lidar_height_m != null ? ` · lidar ${Math.round(m.lidar_height_m * 100)} cm` : '';
+    meta.textContent = `${when} · ${fmtTime(m.duration_s)}${walked}${h} · ${fmtInt(m.colored_points)} colored · ${fmtInt(m.full_points)} full`;
 
     const files = document.createElement('div');
     files.className = 'map-files';
+    // group: the map itself, then one group per robot export ("go2/full.pcd")
+    const groups = new Map();
     for (const f of m.files || []) {
       if (f === 'info.json') continue;
-      const a = document.createElement('a');
-      a.href = `/api/maps/${m.name}/files/${f}`;
-      a.textContent = f;
-      a.download = `${m.name}_${f}`;
-      files.append(a);
+      const [grp, file] = f.includes('/') ? f.split('/') : ['map', f];
+      if (!groups.has(grp)) groups.set(grp, []);
+      groups.get(grp).push([f, file]);
+    }
+    for (const [grp, list] of groups) {
+      const label = document.createElement('span');
+      label.className = 'group';
+      const ex = (m.exports || []).find((e) => e.name === grp);
+      label.textContent = grp === 'map' ? 'Map (floor at z = 0)'
+        : `${grp} (lidar at ${ex ? Math.round(ex.height * 100) + ' cm' : '?'})`;
+      files.append(label);
+      for (const [path, file] of list) {
+        const a = document.createElement('a');
+        a.href = `/api/maps/${m.name}/files/${path}`;
+        a.textContent = file;
+        a.download = `${m.name}_${path.replace('/', '_')}`;
+        files.append(a);
+      }
     }
     li.append(top, meta, files);
     ul.append(li);
@@ -417,6 +489,10 @@ $('btn-refresh').addEventListener('click', loadMaps);
 
 // ---- start ----------------------------------------------------------------
 $('map-name').placeholder = defaultName();
+try {
+  const saved = Number(localStorage.getItem('lidarHeightCm'));
+  if (saved >= 5 && saved <= 500) $('lidar-height').value = saved;
+} catch { /* storage unavailable: keep the default */ }
 pollStatus();
 loadMaps();
 setInterval(loadMaps, 15000);
