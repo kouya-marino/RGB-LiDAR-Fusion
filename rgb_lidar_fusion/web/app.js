@@ -21,6 +21,7 @@ const host = $('view');
 // otherwise) capture the 3D view instead of a cleared canvas.
 const renderer = new THREE.WebGLRenderer({
   antialias: true, preserveDrawingBuffer: new URLSearchParams(location.search).has('shot') });
+renderer.localClippingEnabled = true;          // height clip (view only)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 host.appendChild(renderer.domElement);
 
@@ -37,7 +38,13 @@ const grid = new THREE.GridHelper(20, 20, 0x2b3a4d, 0x1a2330);
 grid.rotation.x = Math.PI / 2;                // XY plane
 scene.add(grid, new THREE.AxesHelper(0.5));
 
-const material = (size) => new THREE.PointsMaterial({ size, sizeAttenuation: false, vertexColors: true });
+// height clip: z is height above the floor in the map frame. Clipping planes
+// are applied on the GPU, so changing them costs nothing and data is untouched.
+const clipTop = new THREE.Plane(new THREE.Vector3(0, 0, -1), 2.2);      // keep z <= 2.2
+const clipBottom = new THREE.Plane(new THREE.Vector3(0, 0, 1), -0.05);  // keep z >= 0.05
+const clipPlanes = [];
+const material = (size) => new THREE.PointsMaterial({
+  size, sizeAttenuation: false, vertexColors: true, clippingPlanes: clipPlanes });
 const fullPts = new THREE.Points(new THREE.BufferGeometry(), material(2));
 const coloredPts = new THREE.Points(new THREE.BufferGeometry(), material(3));
 coloredPts.renderOrder = 1;
@@ -456,6 +463,24 @@ $('point-size').addEventListener('input', (e) => {
   coloredPts.material.size = v + 1;
 });
 $('btn-fit').addEventListener('click', () => fitView(true));
+
+function updateClip() {
+  const top = Number($('clip-top').value), bottom = Number($('clip-bottom').value);
+  clipTop.constant = top;
+  clipBottom.constant = -bottom;
+  $('clip-top-out').textContent = top.toFixed(2).replace(/0$/, '');
+  $('clip-bottom-out').textContent = bottom.toFixed(2).replace(/0$/, '');
+  $('clip-top').disabled = !$('clip-top-on').checked;
+  $('clip-bottom').disabled = !$('clip-bottom-on').checked;
+  clipPlanes.length = 0;                       // the materials share this array
+  if ($('clip-top-on').checked) clipPlanes.push(clipTop);
+  if ($('clip-bottom-on').checked) clipPlanes.push(clipBottom);
+  for (const p of [fullPts, coloredPts]) p.material.needsUpdate = true;
+}
+for (const id of ['clip-top', 'clip-bottom', 'clip-top-on', 'clip-bottom-on']) {
+  $(id).addEventListener('input', updateClip);
+}
+updateClip();
 $('btn-live').addEventListener('click', goLive);
 
 // ---- confirmations --------------------------------------------------------
