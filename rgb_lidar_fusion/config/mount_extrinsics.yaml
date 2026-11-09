@@ -1,0 +1,8 @@
+# livox_frame -> camera_link for the reference mount (hardware/mount/).
+# DESIGN values from CAD; refine by calibration once the sensors are mounted.
+# The RealSense driver adds camera_link -> camera_color_optical_frame itself
+# (factory calibrated), so only this one transform is published here.
+parent_frame: livox_frame
+child_frame: camera_link
+xyz: [0.0842, 0.0175, -0.0669]
+quat_xyzw: [0.0, -0.2164, 0.0, 0.9763]

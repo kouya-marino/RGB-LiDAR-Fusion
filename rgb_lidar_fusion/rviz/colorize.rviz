@@ -1,0 +1,66 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Background Color: 30; 30; 30
+    Fixed Frame: livox_frame
+    Frame Rate: 30
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 1
+      Plane Cell Count: 20
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Show Names: false
+      Marker Scale: 0.3
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Raw lidar
+      Enabled: true
+      Topic:
+        Value: /livox/lidar
+        Reliability Policy: Best Effort
+      Style: Points
+      Size (Pixels): 2
+      Color Transformer: FlatColor
+      Color: 90; 90; 90
+      Decay Time: 0
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Colored scan
+      Enabled: true
+      Topic:
+        Value: /colored_scan
+        Reliability Policy: Best Effort
+      Style: Points
+      Size (Pixels): 3
+      Color Transformer: RGB8
+      Decay Time: 0
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Colored map
+      Enabled: true
+      Topic:
+        Value: /colored_map
+        Reliability Policy: Reliable
+      Style: Points
+      Size (Pixels): 3
+      Color Transformer: RGB8
+    - Class: rviz_default_plugins/Image
+      Name: Camera
+      Enabled: true
+      Topic:
+        Value: /camera/camera/color/image_raw
+        Reliability Policy: Best Effort
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 8
+      Focal Point: {X: 2, Y: 0, Z: 0}
+      Pitch: 0.5
+      Yaw: 3.14
+Window Geometry:
+  Width: 1400
+  Height: 900

@@ -36,3 +36,6 @@ venv/
 .idea/
 *.swp
 .DS_Store
+
+# Colorizer output
+output/

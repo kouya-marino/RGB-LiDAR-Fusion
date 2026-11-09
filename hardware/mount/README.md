@@ -2,11 +2,17 @@
 
 A 3D-printable mount for the Livox Mid-360 and an Intel RealSense D435i. The lidar's scan axis is tilted 45° up from horizontal, and the camera is pitched 20° down. It attaches to a wall with M5 screws or to a pole with hose clamps.
 
+<p align="center">
+  <img src="images/mount_cad_views.png" alt="CAD views of the mount" width="45%">
+  <img src="images/mount_fov.png" alt="Lidar and camera fields of view on the mount" width="40%">
+</p>
+
 | File | What it is |
 |------|------------|
 | [`mid360_45_d435i_20down_mount_strong.py`](mid360_45_d435i_20down_mount_strong.py) | Parametric CAD source. Edit the parameters at the top and re-run. |
 | [`mid360_45_d435i_20down_mount_strong.stl`](mid360_45_d435i_20down_mount_strong.stl) | Printable mesh: watertight, 75 × 100 × 120 mm, 193.5 cm³ |
 | [`extrinsics.txt`](extrinsics.txt) | Script output: the design extrinsics computed from the CAD geometry |
+| [`images/`](images/) | CAD views and a field-of-view diagram |
 
 Regenerate from this folder:
 

@@ -1,0 +1,18 @@
+colorizer:
+  ros__parameters:
+    lidar_topic: /livox/lidar
+    image_topic: /camera/camera/color/image_raw
+    camera_info_topic: /camera/camera/color/camera_info
+    scan_mid_offset: 0.05     # livox stamps the sweep start; sweep is 0.1 s
+    time_offset: 0.0
+    max_dt: 0.05
+    max_wait: 0.3             # s, a scan waits this long for an image after its midpoint
+    min_range: 0.1
+    max_range: 40.0
+    occl_cell: 4
+    occl_tol: 0.10
+    accumulate: false         # true: build a best-view voxel map (rig must stay still)
+    voxel: 0.03
+    publish_period: 1.0
+    output_stem: colored_cloud
+    save_on_shutdown: true
