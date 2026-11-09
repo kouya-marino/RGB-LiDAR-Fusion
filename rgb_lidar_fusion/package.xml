@@ -5,7 +5,7 @@
   <version>0.1.0</version>
   <description>Real-time RGB camera and Livox Mid-360 LiDAR fusion for colorized 3D point clouds.</description>
   <maintainer email="prashantrawatmailbox@gmail.com">Prashant Rawat</maintainer>
-  <license>TODO</license>
+  <license>MIT</license>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>

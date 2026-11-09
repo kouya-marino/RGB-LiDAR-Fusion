@@ -29,7 +29,7 @@ setup(
     maintainer_email='prashantrawatmailbox@gmail.com',
     description=('Real-time RGB camera and Livox Mid-360 LiDAR fusion '
                  'for colorized 3D point clouds.'),
-    license='TODO',
+    license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
