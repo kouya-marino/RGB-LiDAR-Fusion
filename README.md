@@ -20,7 +20,7 @@ Real-time RGB camera and Livox Mid-360 LiDAR fusion for generating colorized 3D 
 | Component | Tested | Notes |
 |-----------|--------|-------|
 | LiDAR | Livox Mid-360 | Other Livox / LiDAR models: planned |
-| Camera | *TBD* | Any RGB camera with a ROS driver should work |
+| Camera | Intel RealSense D435i | Uses only its RGB stream; other RGB cameras with a ROS 2 driver: planned |
 
 You need the camera intrinsics and the LiDAR-to-camera extrinsic calibration. Instructions for getting them are coming soon.
 
