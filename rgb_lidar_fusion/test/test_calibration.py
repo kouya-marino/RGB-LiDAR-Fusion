@@ -5,8 +5,8 @@ import pytest
 cv2 = pytest.importorskip('cv2')
 
 from rgb_lidar_fusion.calibration import (  # noqa: E402
-    T_cam_from_rpy, alignment_score, auto_refine, camera_delta, default_cell, image_edges,
-    prefilter, render_overlay, voxel_downsample)
+    T_cam_from_rpy, alignment_score, auto_refine, camera_delta, coverage_mask, default_cell,
+    image_edges, prefilter, render_overlay, voxel_downsample)
 from rgb_lidar_fusion.extrinsics import invert  # noqa: E402
 from rgb_lidar_fusion.extrinsics import se3, to_rpy_xyz  # noqa: E402
 from rgb_lidar_fusion.projection import CameraModel  # noqa: E402
@@ -64,8 +64,11 @@ def test_auto_refine_recovers_a_few_degrees_of_error(scene):
     T_seed = se3(seed, TRUE_XYZ)
     pts_f = prefilter(pts, CAM, invert(T_seed))
 
+    mask = coverage_mask(pts_f, CAM, invert(T_seed), cell)
+
     def score(delta):
-        return alignment_score(pts_f, edges, CAM, invert(camera_delta(T_seed, delta)), cell)[0]
+        return alignment_score(pts_f, edges, CAM, invert(camera_delta(T_seed, delta)), cell,
+                               mask=mask)[0]
 
     delta, start, final, edge_hits = auto_refine(score)
     assert final > start

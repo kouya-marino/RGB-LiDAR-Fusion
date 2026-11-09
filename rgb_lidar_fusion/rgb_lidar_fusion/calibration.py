@@ -67,9 +67,16 @@ def _visible(pts_lidar, cam, T_cam_lidar, min_range, max_range, occl_tol):
 
 def alignment_score(pts_lidar: np.ndarray, edges: Sequence[np.ndarray], cam: CameraModel,
                     T_cam_lidar: np.ndarray, cell: int, min_range: float = 0.5,
-                    max_range: float = 10.0, occl_tol: float = 0.10) -> Tuple[float, int]:
+                    max_range: float = 10.0, occl_tol: float = 0.10,
+                    mask: Optional[np.ndarray] = None) -> Tuple[float, int]:
     """Mean correlation of depth edges with image edges over `edges` (one per
-    frame), and the number of lidar points used. NaN if too little overlap."""
+    frame), and the number of lidar points used. NaN if too little overlap.
+
+    `mask` fixes WHICH raster cells are compared (see `coverage_mask`). Without
+    it, each candidate rotation is scored over the cells its own points happen
+    to cover, and the search can win by picking a lucky subset rather than by
+    aligning edges: measured on a real capture, the 'best' rotation was 7.7 deg
+    off and visibly misaligned while scoring twice as high."""
     uv, d = _visible(pts_lidar, cam, T_cam_lidar, min_range, max_range, occl_tol)
     if uv.shape[0] < MIN_POINTS:
         return float('nan'), int(uv.shape[0])
@@ -78,13 +85,15 @@ def alignment_score(pts_lidar: np.ndarray, edges: Sequence[np.ndarray], cam: Cam
     cx = np.clip((uv[:, 0] // cell).astype(np.int64), 0, cols - 1)
     nearest = np.full(rows * cols, np.inf)
     np.minimum.at(nearest, cy * cols + cx, d)
-    mask = np.isfinite(nearest).reshape(rows, cols)
+    covered = np.isfinite(nearest).reshape(rows, cols)
     depth = nearest.reshape(rows, cols)
-    filled = np.where(mask, depth, np.median(depth[mask])).astype(np.float32)
+    filled = np.where(covered, depth, np.median(depth[covered])).astype(np.float32)
     gd = np.abs(cv2.Sobel(filled, cv2.CV_32F, 1, 0, ksize=3)) + \
         np.abs(cv2.Sobel(filled, cv2.CV_32F, 0, 1, ksize=3))
     # cells on the rim of the lidar coverage have fake depth gradients
-    m = cv2.erode(mask.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    m = cv2.erode(covered.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    if mask is not None:
+        m = mask                                   # the same cells for every candidate
     if m.sum() < 200:
         return float('nan'), int(uv.shape[0])
     a = gd[m] - gd[m].mean()
@@ -150,6 +159,23 @@ def auto_refine(score: Callable[[List[float]], float], schedule=AUTO_SCHEDULE,
                   for a, v in zip(AXES, delta) if abs(v) >= bound - 1e-6]
     final = score(delta)
     return delta, start, final, edge_hits
+
+
+def coverage_mask(pts_lidar: np.ndarray, cam: CameraModel, T_cam_lidar: np.ndarray, cell: int,
+                  min_range: float = 0.5, max_range: float = 10.0, occl_tol: float = 0.10,
+                  margin: int = 3) -> np.ndarray:
+    """The raster cells covered by lidar at the seed pose, eroded by `margin`
+    cells so that candidates a few degrees away still cover them. Pass it to
+    every `alignment_score` call of one search."""
+    uv, _ = _visible(pts_lidar, cam, T_cam_lidar, min_range, max_range, occl_tol)
+    rows, cols = (cam.height + cell - 1) // cell, (cam.width + cell - 1) // cell
+    covered = np.zeros((rows, cols), np.uint8)
+    if uv.shape[0]:
+        cy = np.clip((uv[:, 1] // cell).astype(np.int64), 0, rows - 1)
+        cx = np.clip((uv[:, 0] // cell).astype(np.int64), 0, cols - 1)
+        covered[cy, cx] = 1
+    k = 2 * margin + 1
+    return cv2.erode(covered, np.ones((k, k), np.uint8)) > 0
 
 
 def render_overlay(rgb: np.ndarray, pts_lidar: np.ndarray, cam: CameraModel,

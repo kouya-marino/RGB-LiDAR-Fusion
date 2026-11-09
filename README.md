@@ -159,7 +159,7 @@ ros2 run rgb_lidar_fusion calibrate            # 20 s capture, solve, overlays +
 ros2 run rgb_lidar_fusion calibrate --write    # ... and update config/mount_extrinsics.yaml
 ```
 
-Keep the rig still, facing objects with clear outlines 2–4 m away. The tool keeps only points that stay put (people walking through drop out), uses the median of 9 images, leaves the floor out, and refuses a capture where the rig or the odometry moved. It aligns depth edges in the lidar cloud with edges in the image; results and before/after overlays go to `output/calibration/`. In a scene that is mostly floor with few objects, repeated captures agree only to about ±1°; the CAD values are inside that, so they are in use. Run two captures and only `--write` if they agree.
+Keep the rig still, facing objects with clear outlines 2–4 m away. The tool keeps only points that stay put (people walking through drop out), uses the median of 9 images, leaves the floor out, refuses a capture where the rig or the odometry moved, and limits the correction to ±5°. It aligns depth edges in the lidar cloud with edges in the image, always comparing the same image cells for every candidate rotation (otherwise the search can pick a lucky subset of cells and look better while being worse). Results and before/after overlays go to `output/calibration/`; `--from <capture>.npz` re-solves a saved capture. Run at least two captures and only `--write` if they agree: on the reference rig four captures agreed within 0.23°, and that calibration is in [`config/mount_extrinsics.yaml`](rgb_lidar_fusion/config/mount_extrinsics.yaml).
 
 ## Example output
 
@@ -174,7 +174,7 @@ Sample colorized point clouds (`.pcd` / `.ply`) will be added under [`examples/`
 - [x] Web UI: live 3D map, recording controls, saved maps
 - [x] Mapping while moving (FAST-LIO2), gravity-levelled maps with the floor at z = 0
 - [x] Robot map exports (Unitree Go2, G1)
-- [ ] LiDAR–camera extrinsic calibration tool
+- [x] LiDAR–camera extrinsic calibration tool (targetless edge alignment)
 - [ ] ROS 1 support
 - [ ] Calibration guide
 - [ ] Sample data and demo GIF

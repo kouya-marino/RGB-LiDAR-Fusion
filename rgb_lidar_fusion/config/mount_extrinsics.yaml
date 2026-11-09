@@ -1,8 +1,12 @@
 # livox_frame -> camera_link for the reference mount (hardware/mount/).
-# DESIGN values from CAD; refine by calibration once the sensors are mounted.
+# CALIBRATED 2026-11-09T15:42:55+09:00 by `ros2 run rgb_lidar_fusion calibrate` (edge alignment,
+# rotation only): score 0.1264 -> 0.1807, rotation change 0.66 deg.
+# Repeatability: four static captures on 2026-11-09 agree within 0.23 deg
+# (camera rolled ~0.7 deg relative to the CAD design).
+# Design values (CAD): xyz [0.0842, 0.0175, -0.0669], quat_xyzw [0.0, -0.2164, 0.0, 0.9763]
 # The RealSense driver adds camera_link -> camera_color_optical_frame itself
 # (factory calibrated), so only this one transform is published here.
 parent_frame: livox_frame
 child_frame: camera_link
-xyz: [0.0842, 0.0175, -0.0669]
-quat_xyzw: [0.0, -0.2164, 0.0, 0.9763]
+xyz: [0.08427, 0.01751, -0.06705]
+quat_xyzw: [0.00552, -0.21549, 0.00124, 0.97649]

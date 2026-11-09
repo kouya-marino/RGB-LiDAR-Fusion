@@ -31,8 +31,8 @@ import cv2
 import numpy as np
 
 from rgb_lidar_fusion.calibration import (
-    AXES, alignment_score, auto_refine, camera_delta, default_cell, drop_floor, image_edges,
-    median_image, prefilter, render_overlay, static_points, voxel_downsample)
+    AXES, alignment_score, auto_refine, camera_delta, coverage_mask, default_cell, drop_floor,
+    image_edges, median_image, prefilter, render_overlay, static_points, voxel_downsample)
 from rgb_lidar_fusion.extrinsics import invert, matrix_to_quat, to_rpy_xyz
 from rgb_lidar_fusion.projection import CameraModel
 
@@ -203,9 +203,13 @@ def solve(cap, args, out_dir):
     print('solving: {} points in view, median of {} images, raster cell {} px'.format(
         len(pts), len(cap['images']), cell))
 
+    # compare the same cells for every candidate (see alignment_score)
+    mask = coverage_mask(pts, cam, invert(T_seed), cell, args.min_range, args.max_range)
+
     def score(delta):
         return alignment_score(pts, edges, cam, invert(camera_delta(T_seed, delta)), cell,
-                               min_range=args.min_range, max_range=args.max_range)[0]
+                               min_range=args.min_range, max_range=args.max_range,
+                               mask=mask)[0]
 
     delta, s0, s1, hits = auto_refine(score, log=print)
     T_new = camera_delta(T_seed, delta)
