@@ -89,6 +89,13 @@
             <option value="gray">Gray</option>
           </select>
         </label>
+        <div class="clip">
+          <label class="check"><input type="checkbox" id="clip-top-on" checked>Hide above <output id="clip-top-out">2.2</output> m</label>
+          <input type="range" id="clip-top" min="0.3" max="5" step="0.05" value="2.2" aria-label="Hide points above this height (m)">
+          <label class="check"><input type="checkbox" id="clip-bottom-on">Hide below <output id="clip-bottom-out">0.05</output> m</label>
+          <input type="range" id="clip-bottom" min="-1" max="2" step="0.05" value="0.05" aria-label="Hide points below this height (m)" disabled>
+          <p class="hint small">Heights above the floor; view only, saved files are not changed.</p>
+        </div>
         <label class="field inline">
           <span>Point size <output id="size-out">2</output></span>
           <input type="range" id="point-size" min="1" max="8" step="1" value="2">
