@@ -5,10 +5,21 @@ Messages are parsed with numpy directly rather than sensor_msgs_py/cv_bridge:
 it is faster, and it handles livox_ros_driver2's packed point layout (mixed
 float32 / uint8 / float64 fields, 26 bytes per point) without assumptions.
 """
+import array
+
 import numpy as np
 from sensor_msgs.msg import Image, PointCloud2, PointField
 
 from rgb_lidar_fusion.io_cloud import pack_rgb
+
+
+def _as_uint8_array(record: np.ndarray) -> array.array:
+    """Message payload as array('B'). Assigning `bytes` to a uint8[] field makes
+    rclpy range-check every byte in a Python loop: 69 ms for one 20k-point scan
+    (0.4 ms this way). That cost on every message starved the IMU and image
+    callbacks while recording."""
+    return array.array('B', record.tobytes(order='C'))
+
 
 _DTYPE_OF = {
     PointField.INT8: np.int8, PointField.UINT8: np.uint8,
@@ -132,7 +143,7 @@ def xyzrgb_to_msg(xyz: np.ndarray, rgb: np.ndarray, frame_id: str,
     msg.fields = [PointField(name=name, offset=4 * i,
                              datatype=PointField.FLOAT32, count=1)
                   for i, name in enumerate(('x', 'y', 'z', 'rgb'))]
-    msg.data = record.tobytes(order='C')
+    msg.data = _as_uint8_array(record)
     return msg
 
 
@@ -155,5 +166,5 @@ def xyzi_to_msg(xyz: np.ndarray, intensity: np.ndarray, frame_id: str,
     msg.fields = [PointField(name=name, offset=4 * i,
                              datatype=PointField.FLOAT32, count=1)
                   for i, name in enumerate(('x', 'y', 'z', 'intensity'))]
-    msg.data = record.tobytes(order='C')
+    msg.data = _as_uint8_array(record)
     return msg
