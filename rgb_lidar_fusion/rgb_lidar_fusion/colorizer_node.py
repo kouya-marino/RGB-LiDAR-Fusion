@@ -58,7 +58,7 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformBroadcaster, TransformException, TransformListener
 
-from rgb_lidar_fusion.extrinsics import invert
+from rgb_lidar_fusion.extrinsics import invert, matrix_to_quat
 from rgb_lidar_fusion.fusion import Accumulator, VoxelGrid, view_quality
 from rgb_lidar_fusion.io_cloud import write_both, write_pcd_xyzi, write_ply_xyzi
 from rgb_lidar_fusion.mapframe import (apply, gravity_up, level_frame, path_length,
@@ -83,24 +83,6 @@ def valid_map_name(name: str) -> bool:
 
 def _sec_to_time(t: float) -> Time:
     return Time(nanoseconds=int(round(t * 1e9)))
-
-
-def matrix_to_quat(R: np.ndarray):
-    """3x3 rotation -> quaternion (x, y, z, w), robust near 180 degrees."""
-    R = np.asarray(R, dtype=float)
-    tr = R[0, 0] + R[1, 1] + R[2, 2]
-    if tr > 0:
-        s = np.sqrt(tr + 1.0) * 2
-        return ((R[2, 1] - R[1, 2]) / s, (R[0, 2] - R[2, 0]) / s,
-                (R[1, 0] - R[0, 1]) / s, s / 4)
-    i = int(np.argmax(np.diag(R)))
-    j, k = (i + 1) % 3, (i + 2) % 3
-    s = np.sqrt(max(0.0, 1.0 + R[i, i] - R[j, j] - R[k, k])) * 2
-    q = [0.0, 0.0, 0.0, (R[k, j] - R[j, k]) / s]
-    q[i] = s / 4
-    q[j] = (R[j, i] + R[i, j]) / s
-    q[k] = (R[k, i] + R[i, k]) / s
-    return tuple(q)
 
 
 def _matrix_to_tf(T: np.ndarray, parent: str, child: str, stamp) -> TransformStamped:
@@ -139,7 +121,7 @@ class ColorizerNode(Node):
         p('max_buffered_images', 30)
         p('image_queue', 5)
         p('max_wait', 0.3)               # s, how long a scan may wait for its image
-        p('lidar_height', 0.70)          # m, lidar origin above the floor at Start
+        p('lidar_height', 0.715)         # m, lidar origin above the floor at Start
         p('static_gyro', 0.05)           # rad/s, "held still" threshold for Start
         p('level_window', 1.0)           # s of IMU averaged for gravity
         p('accumulate', False)           # start recording `map_name` at launch
@@ -170,6 +152,7 @@ class ColorizerNode(Node):
         self.static_gyro = float(g('static_gyro'))
         self.level_window = float(g('level_window'))
         self.voxel = float(g('voxel'))
+        self.default_height = float(g('lidar_height'))   # the UI's default
         self.display_voxel = float(g('display_voxel'))
         self.publish_period = float(g('publish_period'))
         self.full_publish_period = float(g('full_publish_period'))
@@ -230,7 +213,7 @@ class ColorizerNode(Node):
         self.create_service(Trigger, '~/stop_map', self._srv_stop)
         self.create_service(Trigger, '~/cancel_map', self._srv_cancel)
         self.create_service(Trigger, '~/save_cloud', self._srv_save)
-        self.create_timer(1.0, self._publish_status)
+        self.create_timer(0.5, self._publish_status)    # 2 Hz: the turn warning reacts fast
         self.create_timer(5.0, self._log_progress)
 
         self.get_logger().info(
@@ -321,6 +304,7 @@ class ColorizerNode(Node):
         self.recording, self.map_name, self.rec_T, self.rec_height = True, name, T, height
         self.rec_started, self.rec_scans, self.path = time.time(), 0, []
         self._counts = (0, 0)
+        self._too_fast_at_start = self.stats['too_fast']
         return True, 'recording {!r} (lidar at {:.2f} m)'.format(name, height)
 
     def save_map(self) -> str:
@@ -569,6 +553,14 @@ class ColorizerNode(Node):
                     z=round(float(M[2, 3]), 3),
                     yaw=round(float(np.arctan2(M[1, 0], M[0, 0])), 3))
 
+    def turn_rate(self, window: float = 0.25) -> float:
+        """Current rotation rate in deg/s, from the IMU gyro (all axes)."""
+        if not self._imu:
+            return 0.0
+        t_end = self._imu[-1][0]
+        w = [e[2] for e in self._imu if e[0] >= t_end - window]
+        return float(np.degrees(np.linalg.norm(np.mean(w, axis=0)))) if w else 0.0
+
     def status(self) -> dict:
         acc, gyro = self._imu_window()
         still = gyro is not None and len(gyro) > 0 and \
@@ -582,11 +574,16 @@ class ColorizerNode(Node):
             colored_points=self._counts[0], full_points=self._counts[1],
             rec_scans=self.rec_scans, scans=self.stats['scans'],
             coloured=self.stats['coloured'], too_fast=self.stats['too_fast'],
+            rec_too_fast=self.stats['too_fast'] - getattr(self, '_too_fast_at_start', 0)
+            if self.recording else 0,
+            turn_rate_dps=round(self.turn_rate(), 1),
+            max_turn_rate_dps=round(float(np.degrees(self.max_ang_rate)), 1),
             camera_ok=self.cam is not None,
             odometry_ok=self._world is not None and
             self._lookup(self._world, self.lidar_frame) is not None,
             imu_ok=acc is not None and len(acc) > 20, still=bool(still),
             lidar_height=float(self.get_parameter('lidar_height').value),
+            default_lidar_height=self.default_height,
             rec_height=self.rec_height if self.recording else None,
             pose=self._pose(), path=[[round(float(x), 3), round(float(y), 3)] for x, y, _ in path],
             exports=self.exports, last_saved=self.last_saved, output_dir=self.output_dir)

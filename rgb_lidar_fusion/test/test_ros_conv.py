@@ -258,7 +258,7 @@ def test_xyzi_to_msg_roundtrip():
 
 def test_matrix_to_quat_roundtrip_including_180_degrees():
     pytest.importorskip('tf2_ros')
-    from rgb_lidar_fusion.colorizer_node import matrix_to_quat
+    from rgb_lidar_fusion.extrinsics import matrix_to_quat
     from rgb_lidar_fusion.extrinsics import se3
     for rpy in ([0, 0, 0], [10, -20, 30], [180, 0, 0], [0, 180, 0], [0, 0, 180],
                 [-65, 0, -90], [179.9, 0.1, 0]):

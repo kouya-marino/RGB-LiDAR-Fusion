@@ -35,6 +35,7 @@ setup(
         'console_scripts': [
             'colorizer = rgb_lidar_fusion.colorizer_node:main',
             'web_ui = rgb_lidar_fusion.web_ui_node:main',
+            'calibrate = rgb_lidar_fusion.calibrate_node:main',
         ],
     },
 )

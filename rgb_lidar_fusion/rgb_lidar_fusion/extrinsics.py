@@ -122,3 +122,21 @@ def load_extrinsic(path: str) -> np.ndarray:
             raise KeyError(
                 "extrinsic file {!r} is missing required key {!r}".format(path, key))
     return se3(data['rpy_deg'], data['xyz_m'])
+
+
+def matrix_to_quat(R: np.ndarray):
+    """3x3 rotation -> quaternion (x, y, z, w), robust near 180 degrees."""
+    R = np.asarray(R, dtype=float)
+    tr = R[0, 0] + R[1, 1] + R[2, 2]
+    if tr > 0:
+        s = np.sqrt(tr + 1.0) * 2
+        return ((R[2, 1] - R[1, 2]) / s, (R[0, 2] - R[2, 0]) / s,
+                (R[1, 0] - R[0, 1]) / s, s / 4)
+    i = int(np.argmax(np.diag(R)))
+    j, k = (i + 1) % 3, (i + 2) % 3
+    s = np.sqrt(max(0.0, 1.0 + R[i, i] - R[j, j] - R[k, k])) * 2
+    q = [0.0, 0.0, 0.0, (R[k, j] - R[j, k]) / s]
+    q[i] = s / 4
+    q[j] = (R[j, i] + R[i, j]) / s
+    q[k] = (R[k, i] + R[i, k]) / s
+    return tuple(q)

@@ -196,6 +196,16 @@ input[type="number"] {
   padding: 3px 8px; border-radius: 6px;
 }
 
+.turn-warn {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  max-width: calc(100% - 24px);
+  padding: 8px 14px; border-radius: 8px; font-weight: 600; font-size: 13.5px;
+  background: color-mix(in srgb, var(--rec) 22%, var(--panel));
+  border: 1px solid var(--rec); color: #ffd7d5;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .35);
+}
+#fast-note:empty { display: none; }
+
 /* ---- narrow screens --------------------------------------------------- */
 @media (max-width: 820px) {
   .layout { grid-template-columns: 1fr; grid-template-rows: 60vh auto; }

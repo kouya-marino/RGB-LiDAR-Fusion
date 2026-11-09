@@ -13,7 +13,7 @@
   (find it with: ip -br addr).
 
   4. Record:
-  1. Type a map name and the lidar height in cm (to the centre of the dome; default 70).
+  1. Type a map name and the lidar height in cm (to the centre of the dome; default 71.5).
   2. Wait until Odometry · Camera · Held still are all green.
   3. Hold still and press Start recording, then walk slowly.
   4. Press Stop & save.

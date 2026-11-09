@@ -250,6 +250,8 @@ async function openSaved(name) {
 
 // ---- status, banner, overlay ---------------------------------------------
 const fmtInt = (n) => (n == null ? '–' : Number(n).toLocaleString());
+// metres -> "71.5" cm (one decimal only when needed)
+const toCm = (m) => Math.round(m * 1000) / 10;
 const fmtTime = (s) => {
   if (!s) return '–';
   const m = Math.floor(s / 60), r = Math.floor(s % 60);
@@ -264,7 +266,7 @@ async function pollStatus() {
     state.status = { connected: false };
   }
   renderStatus();
-  setTimeout(pollStatus, 1000);
+  setTimeout(pollStatus, 500);
 }
 
 function renderStatus() {
@@ -296,11 +298,26 @@ function renderStatus() {
   }
   $('st-time').textContent = s.recording ? fmtTime(s.elapsed_s) : '–';
 
-  // default height = the colorizer's configured lidar_height, unless this
-  // browser remembers the last one used or the user is typing
-  if (!heightFromBrowser && !heightTouched && s.lidar_height && !s.recording) {
-    $('lidar-height').value = Math.round(s.lidar_height * 100);
+  // default height = the colorizer's configured default, unless this browser
+  // remembers the last one used or the user is typing
+  if (s.default_lidar_height) {
+    state.defaultCm = toCm(s.default_lidar_height);
+    $('height-default').textContent = state.defaultCm;
+    if (!heightFromBrowser && !heightTouched && !s.recording) {
+      $('lidar-height').value = state.defaultCm;
+      state.confirmedCm = state.defaultCm;
+    }
   }
+
+  // turning too fast: the colorizer skips colour for these scans
+  const tooFast = s.recording && s.turn_rate_dps > s.max_turn_rate_dps;
+  $('turn-warn').hidden = !tooFast;
+  if (tooFast) {
+    $('turn-warn').textContent = `Turning too fast: ${Math.round(s.turn_rate_dps)}°/s ` +
+      `(limit ${Math.round(s.max_turn_rate_dps)}°/s). Slow down, these scans are not colored.`;
+  }
+  $('fast-note').textContent = s.recording && s.rec_too_fast > 0
+    ? `${fmtInt(s.rec_too_fast)} scans not colored (turning too fast)` : '';
   $('rd-odom').classList.toggle('ok', !!s.odometry_ok);
   $('rd-cam').classList.toggle('ok', !!s.camera_ok);
   $('rd-still').classList.toggle('ok', !!s.still);
@@ -381,7 +398,9 @@ $('btn-start').addEventListener('click', async () => {
     input.focus();
     return;
   }
-  const cm = Number($('lidar-height').value);
+  // the confirmed height (an edit is confirmed when the field is left)
+  if (Number($('lidar-height').value) !== state.confirmedCm) return;
+  const cm = state.confirmedCm;
   if (!(cm >= 5 && cm <= 500)) {
     flash('Lidar height must be 5–500 cm', 'error');
     $('lidar-height').focus();
@@ -508,10 +527,34 @@ $('map-name').placeholder = defaultName();
 let heightFromBrowser = false;
 try {
   const saved = Number(localStorage.getItem('lidarHeightCm'));
-  if (saved >= 5 && saved <= 500) { $('lidar-height').value = saved; heightFromBrowser = true; }
+  if (saved >= 5 && saved <= 500) {
+    $('lidar-height').value = saved;
+    heightFromBrowser = true;
+  }
 } catch { /* storage unavailable: keep the default */ }
 let heightTouched = false;
+state.defaultCm = Number($('lidar-height').value);
+state.confirmedCm = Number($('lidar-height').value);
 $('lidar-height').addEventListener('input', () => { heightTouched = true; });
+// changing the height away from the default needs a confirmation: a wrong
+// height offsets the whole map (and both robot exports) by the difference
+$('lidar-height').addEventListener('change', (e) => {
+  const v = Number(e.target.value);
+  if (!(v >= 5 && v <= 500)) {
+    flash('Lidar height must be 5–500 cm', 'error');
+    e.target.value = state.confirmedCm;
+    return;
+  }
+  if (v === state.confirmedCm) return;
+  if (v === state.defaultCm ||
+      confirm(`Change the lidar height from ${state.confirmedCm} cm to ${v} cm?\n\n` +
+              `The default is ${state.defaultCm} cm. A wrong height offsets the whole map ` +
+              `(and the robot exports) by the difference.`)) {
+    state.confirmedCm = v;
+  } else {
+    e.target.value = state.confirmedCm;
+  }
+});
 pollStatus();
 loadMaps();
 setInterval(loadMaps, 15000);
