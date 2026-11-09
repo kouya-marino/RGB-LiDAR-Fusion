@@ -21,7 +21,7 @@ Real-time RGB camera and Livox Mid-360 LiDAR fusion for generating colorized 3D 
 - **Web UI**: watch the map grow in 3D, start / stop / save recordings, browse and download saved maps
 - LiDAR ↔ camera extrinsic read from TF; camera intrinsics from the camera driver
 - Saves colored clouds as binary PCD (PCL `x y z rgb`) and PLY
-- ROS 2 Humble, fully containerized (ROS 1 planned)
+- ROS 2 Humble, fully containerized; the saved maps are plain PCD/PLY and work on ROS 1 Noetic robots too ([`ros1/`](ros1/))
 
 ## Hardware
 
@@ -175,7 +175,7 @@ Sample colorized point clouds (`.pcd` / `.ply`) will be added under [`examples/`
 - [x] Mapping while moving (FAST-LIO2), gravity-levelled maps with the floor at z = 0
 - [x] Robot map exports (Unitree Go2, G1)
 - [x] LiDAR–camera extrinsic calibration tool (targetless edge alignment)
-- [ ] ROS 1 support
+- [x] ROS 1: use the saved maps on Noetic robots ([`ros1/`](ros1/))
 - [x] Calibration guide (see Calibration)
 - [ ] Sample data and demo GIF
 - [ ] Support for other LiDARs and cameras
@@ -183,3 +183,7 @@ Sample colorized point clouds (`.pcd` / `.ply`) will be added under [`examples/`
 ## Contributing
 
 Issues and pull requests are welcome, especially adapters for other LiDAR and camera hardware.
+
+## License
+
+[MIT](LICENSE). Vendored third-party code in [`third_party/`](third_party/) keeps its own license (Livox SDK 2 and ROS driver: MIT; Three.js: MIT; FAST-LIO: GPL-2.0, run as a separate process).
