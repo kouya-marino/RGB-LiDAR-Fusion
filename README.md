@@ -176,7 +176,7 @@ Sample colorized point clouds (`.pcd` / `.ply`) will be added under [`examples/`
 - [x] Robot map exports (Unitree Go2, G1)
 - [x] LiDAR–camera extrinsic calibration tool (targetless edge alignment)
 - [ ] ROS 1 support
-- [ ] Calibration guide
+- [x] Calibration guide (see Calibration)
 - [ ] Sample data and demo GIF
 - [ ] Support for other LiDARs and cameras
 
