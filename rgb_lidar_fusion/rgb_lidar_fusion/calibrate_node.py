@@ -59,7 +59,8 @@ def capture(args):
     node = Node('calibrate_capture')
     tf_buffer = Buffer()
     tf_listener = TransformListener(tf_buffer, node, spin_thread=True)
-    st = dict(info=None, clouds=[], chunk=[], images=[], gyro=[], acc=[], frame_cam=None, used=0,
+    st = dict(info=None, clouds=[], chunk=[], images=[], gyro=[], acc=[], poses=[],
+              frame_cam=None, used=0,
               skipped=0, t0=0.0)
 
     def lookup(target, source, stamp=None):
@@ -75,12 +76,13 @@ def capture(args):
     def on_cloud(msg):
         if not st.get('recording'):
             return
+        # the pose AT this sweep's stamp; no fallback to the latest pose: a
+        # sweep placed with the wrong pose corrupts the whole capture
         T = lookup(args.lidar_frame, msg.header.frame_id, Time.from_msg(msg.header.stamp))
-        if T is None:
-            T = lookup(args.lidar_frame, msg.header.frame_id)
         if T is None:
             st['skipped'] += 1
             return
+        st['poses'].append(T)
         pts = pointcloud2_to_xyz(msg)
         pts = pts @ T[:3, :3].T + T[:3, 3]
         pts = pts[np.linalg.norm(pts, axis=1) > 0.3]       # no-returns, the rig itself
@@ -154,6 +156,19 @@ def capture(args):
     if np.isfinite(gyro) and gyro > args.max_gyro:
         sys.exit('the rig moved during capture (mean gyro {:.3f} > {:.3f} rad/s); '
                  'keep it still and try again'.format(gyro, args.max_gyro))
+    if st['skipped'] > 0.1 * (st['used'] + st['skipped']):
+        sys.exit('{} of {} sweeps had no pose (odometry lost track?); try again'.format(
+            st['skipped'], st['used'] + st['skipped']))
+    # the rig is still, so odometry must report the same pose throughout; if it
+    # does not, it glitched and the sweeps do not line up
+    P = np.array(st['poses'])
+    drift = float(np.max(np.linalg.norm(P[:, :3, 3] - P[0, :3, 3], axis=1)))
+    turn = float(max(np.degrees(np.arccos(np.clip((np.trace(P[0, :3, :3].T @ R) - 1) / 2,
+                                                  -1, 1))) for R in P[:, :3, :3]))
+    print('odometry while still: drift {:.1f} mm, rotation {:.2f} deg'.format(drift * 1e3, turn))
+    if drift > 0.02 or turn > 0.3:
+        sys.exit('odometry moved while the rig was still ({:.0f} mm, {:.2f} deg): the sweeps '
+                 'do not line up; try again'.format(drift * 1e3, turn))
     pts_all, chunk = np.vstack(st['clouds']), np.concatenate(st['chunk'])
     pts = static_points(pts_all, chunk)
     print('static filter: kept {:.0f}% of points (the rest moved during the capture)'.format(

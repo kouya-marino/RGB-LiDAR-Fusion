@@ -18,7 +18,7 @@ Serves one static page (Three.js, vendored) plus a small JSON/binary API:
   POST /api/maps/<name>/delete {"confirm": "<name>"}
                                        delete a saved map's folder (not while
                                        it is being recorded)
-  POST /api/robots {"robots": [{"name", "height" (m), "flip"}]}
+  POST /api/robots {"robots": [{"name", "height" (m), "roll", "pitch" (deg)}]}
                                        replace the robot export list
   POST /api/maps/<name>/reexport       rewrite a saved map's robot folders from
                                        the current list

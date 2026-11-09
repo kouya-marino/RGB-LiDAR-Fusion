@@ -124,3 +124,10 @@ def test_drop_floor_keeps_objects():
     kept = drop_floor(np.vstack([floor, box]), up)
     assert kept[:, 2].min() > -0.6 - 1e-6          # floor gone, box above 10 cm stays
     assert len(kept) >= 85
+
+
+def test_auto_refine_never_moves_beyond_the_bound():
+    # a score that keeps rising forever along tilt: the bound must stop it
+    delta, _, _, hits = auto_refine(lambda d: d[0], bound=5.0)
+    assert abs(delta[0]) <= 5.0 + 1e-9
+    assert any('limit' in h for h in hits)

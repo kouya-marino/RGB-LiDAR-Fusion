@@ -27,8 +27,11 @@ colorizer:
     save_on_shutdown: true    # a map still recording at shutdown is saved
     # Robot exports written next to each saved map: the map re-expressed as if
     # the robot's lidar had started where the rig's lidar did.
-    # flip: true only if the robot's driver reports its lidar upside down
-    # (a livox driver configured with roll 180 already corrects it).
+    # Defaults only: the web UI's Robot exports panel saves its own list to
+    # output/robots.json, which wins. Roll (about the forward axis, 180 = upside
+    # down) and pitch (nose down positive) as the robot's DRIVER reports the
+    # lidar: a livox driver configured with roll 180 already reports it upright.
     export_names: [go2, g1]
     export_heights: [0.45, 1.25]
-    export_flip: [false, false]
+    export_rolls: [0.0, 0.0]
+    export_pitches: [0.0, 0.0]

@@ -322,7 +322,7 @@ function renderStatus() {
   syncRobots(s);
   const ex = s.exports || [];
   $('exports-note').textContent = ex.length
-    ? 'On save, also writes ' + ex.map((e) => `${e.name} (lidar ${Math.round(e.height * 100)} cm${e.flip ? ', upside down' : ''})`).join(' and ') + '.'
+    ? 'On save, also writes ' + ex.map(robotLabel).join(', ') + '.'
     : '';
   if (state.mode === 'live') setPath(s.recording ? (s.path || []) : [], s.pose || null);
 
@@ -476,8 +476,7 @@ function confirmStart(name, cm) {
   $('sd-height-warn').textContent = off ? `Not the default (${state.defaultCm} cm). A wrong height ` +
     'offsets the whole map and the robot exports by the difference.' : '';
   const ex = (state.status && state.status.exports) || [];
-  $('sd-exports').textContent = ex.length
-    ? ex.map((e) => `${e.name} (${Math.round(e.height * 100)} cm)`).join(', ') : 'none';
+  $('sd-exports').textContent = ex.length ? ex.map(robotLabel).join(', ') : 'none';
   const p = showDialog($('start-dlg'), () => true);
   $('sd-ok').focus();
   return p;
@@ -517,7 +516,7 @@ function syncRobots(s) {
   if (!state.robotsDirty && server !== state.robotsServer) {
     state.robotsServer = server;
     state.robots = (s.exports || []).map((r) => ({
-      name: r.name, cm: Math.round(r.height * 1000) / 10, flip: !!r.flip }));
+      name: r.name, cm: Math.round(r.height * 1000) / 10, roll: r.roll || 0, pitch: r.pitch || 0 }));
     renderRobots();
   }
 }
@@ -528,54 +527,68 @@ function setRobotsDirty(d) {
   $('robots-discard').disabled = !d;
 }
 
+// one robot = two lines: name + remove; then height, roll, pitch (labelled)
+function numField(label, value, min, max, step, onInput, title) {
+  const wrap = document.createElement('label');
+  wrap.className = 'num';
+  if (title) wrap.title = title;
+  const span = document.createElement('span');
+  span.textContent = label;
+  const inp = document.createElement('input');
+  inp.type = 'number';
+  inp.min = String(min); inp.max = String(max); inp.step = String(step);
+  inp.value = value;
+  inp.addEventListener('input', () => onInput(Number(inp.value)));
+  wrap.append(span, inp);
+  return wrap;
+}
+
 function renderRobots() {
   const box = $('robots');
   box.replaceChildren();
-  if (state.robots.length) {
-    const head = document.createElement('div');
-    head.className = 'robot-row robot-head';
-    head.innerHTML = '<span>Robot</span><span>Lidar cm</span><span>Inverted</span><span></span>';
-    box.append(head);
-  } else {
+  if (!state.robots.length) {
     const p = document.createElement('p');
     p.className = 'hint small';
     p.textContent = 'No robots: maps are saved without robot copies.';
     box.append(p);
   }
   state.robots.forEach((r, i) => {
-    const row = document.createElement('div');
-    row.className = 'robot-row';
+    const card = document.createElement('div');
+    card.className = 'robot';
+    const top = document.createElement('div');
+    top.className = 'robot-top';
     const name = document.createElement('input');
     name.type = 'text';
     name.value = r.name;
     name.maxLength = 32;
+    name.placeholder = 'robot name';
     name.setAttribute('aria-label', 'Robot name');
     name.addEventListener('input', () => { r.name = name.value.trim(); setRobotsDirty(true); });
-    const h = document.createElement('input');
-    h.type = 'number';
-    h.min = '5'; h.max = '500'; h.step = '0.1';
-    h.value = r.cm;
-    h.setAttribute('aria-label', `${r.name || 'robot'} lidar height in cm`);
-    h.addEventListener('input', () => { r.cm = Number(h.value); setRobotsDirty(true); });
-    const flip = document.createElement('label');
-    flip.className = 'flip';
-    flip.title = 'Tick only if this robot\'s driver reports its lidar upside down ' +
-      '(a Livox driver set to roll 180, like the G1\'s, already reports it upright)';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = r.flip;
-    cb.addEventListener('change', () => { r.flip = cb.checked; setRobotsDirty(true); });
-    cb.setAttribute('aria-label', `${r.name || 'robot'} lidar is reported upside down`);
-    flip.append(cb, document.createTextNode('flip'));
     const x = document.createElement('button');
     x.type = 'button';
     x.className = 'btn ghost small x';
     x.textContent = '✕';
     x.title = `Remove ${r.name || 'this robot'}`;
     x.addEventListener('click', () => { state.robots.splice(i, 1); setRobotsDirty(true); renderRobots(); });
-    row.append(name, h, flip, x);
-    box.append(row);
+    top.append(name, x);
+    const nums = document.createElement('div');
+    nums.className = 'robot-nums';
+    nums.append(
+      numField('Lidar cm', r.cm, 5, 500, 0.1, (v) => { r.cm = v; setRobotsDirty(true); },
+        'Lidar height above the floor (centre of the lidar)'),
+      numField('Roll °', r.roll, 0, 180, 1, (v) => { r.roll = v; setRobotsDirty(true); },
+        'Rotation about the forward axis as the robot\'s driver reports it: 0 upright, ' +
+        '180 upside down. A Livox driver set to roll 180 (like the G1\'s) already reports upright: 0.'),
+      numField('Pitch °', r.pitch, -90, 90, 1, (v) => { r.pitch = v; setRobotsDirty(true); },
+        'Forward tilt of the lidar, nose down positive (-90 to 90)'));
+    card.append(top, nums);
+    box.append(card);
   });
+}
+
+function robotLabel(r) {
+  const angles = [r.roll ? `roll ${r.roll}°` : '', r.pitch ? `pitch ${r.pitch}°` : ''].filter(Boolean);
+  return `${r.name} (${Math.round(r.height * 1000) / 10} cm${angles.length ? ', ' + angles.join(', ') : ''})`;
 }
 
 function robotsMsg(text, kind = '') {
@@ -585,7 +598,7 @@ function robotsMsg(text, kind = '') {
 }
 
 $('robot-add').addEventListener('click', () => {
-  state.robots.push({ name: '', cm: 50, flip: false });
+  state.robots.push({ name: '', cm: 50, roll: 0, pitch: 0 });
   setRobotsDirty(true);
   renderRobots();
   const inputs = $('robots').querySelectorAll('input[type="text"]');
@@ -599,7 +612,7 @@ $('robots-discard').addEventListener('click', () => {
 });
 $('robots-save').addEventListener('click', async () => {
   const robots = state.robots.map((r) => ({ name: r.name, height: Math.round(r.cm * 10) / 1000,
-                                            flip: r.flip }));
+                                            roll: r.roll, pitch: r.pitch }));
   const r = await post('/api/robots', { robots });
   robotsMsg(r.message, r.ok ? 'ok' : 'error');
   if (r.ok) {
@@ -619,7 +632,7 @@ function confirmAction(title, body, okLabel) {
 
 async function reexportMap(map) {
   const robots = (state.status && state.status.exports) || [];
-  const now = robots.map((r) => `${r.name} (${Math.round(r.height * 1000) / 10} cm)`).join(', ');
+  const now = robots.map(robotLabel).join(', ');
   const gone = (map.exports || []).map((e) => e.name).filter((n) => !robots.some((r) => r.name === n));
   const body = robots.length
     ? `Rewrite the robot copies of ${map.name} for: ${now}.` : `${map.name} will have no robot copies.`;
@@ -756,8 +769,7 @@ function renderMaps(maps) {
       const label = document.createElement('span');
       label.className = 'group';
       const ex = (m.exports || []).find((e) => e.name === grp);
-      label.textContent = grp === 'map' ? 'Map (floor at z = 0)'
-        : `${grp} (lidar at ${ex ? Math.round(ex.height * 100) + ' cm' : '?'})`;
+      label.textContent = grp === 'map' ? 'Map (floor at z = 0)' : (ex ? robotLabel(ex) : grp);
       files.append(label);
       for (const [path, file] of list) {
         const a = document.createElement('a');

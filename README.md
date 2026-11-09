@@ -125,7 +125,7 @@ output/<name>/
   info.json                  # start time, duration, distance walked, lidar height, point counts, exports
 ```
 
-**Frames.** The map frame is gravity-levelled: **floor at z = 0**, origin on the floor directly below the lidar where recording started, **+X** = the direction the rig faced at the start (its lidar +X, flattened). A robot export puts the origin at that robot's lidar instead (`z -= height`), as if the robot's lidar had started where the rig's did, so the robot can start localization at the map origin. Edit the robots in the web UI's **Robot exports** panel (add, remove, rename, lidar height, *inverted*): the list is saved to `output/robots.json` and used for every recording after that; the defaults (Go2 45 cm, G1 125 cm) come from [`config/colorizer.yaml`](rgb_lidar_fusion/config/colorizer.yaml). *Inverted* is only for a robot whose driver reports its lidar upside down (a Livox driver configured with roll 180, like the G1's, already reports it upright). A saved map's *Re-export robots* rewrites its robot copies from the current list (exact: they are a height shift of the saved map).
+**Frames.** The map frame is gravity-levelled: **floor at z = 0**, origin on the floor directly below the lidar where recording started, **+X** = the direction the rig faced at the start (its lidar +X, flattened). A robot export puts the origin at that robot's lidar instead (`z -= height`), as if the robot's lidar had started where the rig's did, so the robot can start localization at the map origin. Edit the robots in the web UI's **Robot exports** panel (add, remove, rename, lidar height, roll, pitch): the list is saved to `output/robots.json` and used for every recording after that; the defaults (Go2 45 cm, G1 125 cm) come from [`config/colorizer.yaml`](rgb_lidar_fusion/config/colorizer.yaml). **Roll** (0–180°, about the forward axis: 0 upright, 180 upside down) and **pitch** (−90–90°, nose down positive) describe the lidar **as the robot's driver reports it**: a Livox driver configured with roll 180 (like the G1's) already reports an upside-down lidar upright, so use 0 there. A saved map's *Re-export robots* rewrites its robot copies from the current list (exact: they are a height shift of the saved map).
 
 ### ROS interface
 
@@ -149,6 +149,17 @@ ros2 service call /colorizer/stop_map std_srvs/srv/Trigger    # saves output/kit
 Launch arguments: `odometry:=false` (stationary rig, no FAST-LIO), `sensors:=false` (sensors already running, or playing a bag), `web:=false`, `port:=8080`, `rviz:=true`, `accumulate:=true` (start recording at launch), `color_profile:=WxHxFPS`. Colorizer tuning is in [`config/colorizer.yaml`](rgb_lidar_fusion/config/colorizer.yaml).
 
 **How it works.** FAST-LIO2 registers each scan into its world frame and publishes the rig's pose as TF. For each scan the colorizer waits until an image from after the sweep's midpoint has arrived, picks the nearest one (dropping the scan if the gap exceeds `max_dt`, 50 ms), looks up where the camera was **at that image's timestamp** through TF (`camera_init → body → livox_frame → camera_link → camera_color_optical_frame`, interpolated between odometry poses), projects the points, rejects points hidden behind nearer ones, and samples their colors. Scans taken while the rig turns faster than 30°/s are not colored (motion smears color across edges) but still go into the full map. When you press Start, the accelerometer's gravity direction (rig held still) and the height you entered fix the levelled map frame. Images are subscribed **reliable**: a full-resolution frame (6.2 MB at 1080p) is larger than DDS shared memory, and best-effort delivery lost about half the frames in testing. With reliable delivery, 1080p at 15 fps arrives without gaps; with odometry running, over 99% of scans are colored.
+
+### Calibration
+
+The lidar → camera rotation can be refined on the running rig:
+
+```bash
+ros2 run rgb_lidar_fusion calibrate            # 20 s capture, solve, overlays + report
+ros2 run rgb_lidar_fusion calibrate --write    # ... and update config/mount_extrinsics.yaml
+```
+
+Keep the rig still, facing objects with clear outlines 2–4 m away. The tool keeps only points that stay put (people walking through drop out), uses the median of 9 images, leaves the floor out, and refuses a capture where the rig or the odometry moved. It aligns depth edges in the lidar cloud with edges in the image; results and before/after overlays go to `output/calibration/`. In a scene that is mostly floor with few objects, repeated captures agree only to about ±1°; the CAD values are inside that, so they are in use. Run two captures and only `--write` if they agree.
 
 ## Example output
 

@@ -138,7 +138,8 @@ class ColorizerNode(Node):
         p('save_on_shutdown', True)
         p('export_names', ['go2', 'g1'])
         p('export_heights', [0.45, 1.25])
-        p('export_flip', [False, False])
+        p('export_rolls', [0.0, 0.0])    # deg about the forward axis, 180 = upside down
+        p('export_pitches', [0.0, 0.0])  # deg, nose down positive
         p('exports_json', '')            # set by the UI: replaces the robot list
 
         g = lambda name: self.get_parameter(name).value  # noqa: E731
@@ -162,12 +163,13 @@ class ColorizerNode(Node):
         self.publish_period = float(g('publish_period'))
         self.full_publish_period = float(g('full_publish_period'))
         self.output_dir = str(g('output_dir'))
-        names, heights, flips = list(g('export_names')), list(g('export_heights')), \
-            list(g('export_flip'))
-        if not (len(names) == len(heights) == len(flips)):
-            raise ValueError('export_names, export_heights and export_flip differ in length')
+        names, heights = list(g('export_names')), list(g('export_heights'))
+        rolls, pitches = list(g('export_rolls')), list(g('export_pitches'))
+        if not (len(names) == len(heights) == len(rolls) == len(pitches)):
+            raise ValueError('export_names/heights/rolls/pitches differ in length')
         self.exports, err = robot_list.validate(
-            [dict(name=n, height=h, flip=f) for n, h, f in zip(names, heights, flips)])
+            [dict(name=n, height=h, roll=r, pitch=pt)
+             for n, h, r, pt in zip(names, heights, rolls, pitches)])
         if self.exports is None:
             raise ValueError('export_* parameters: {}'.format(err))
         # the list edited in the UI (output/robots.json) wins over the config
@@ -235,9 +237,9 @@ class ColorizerNode(Node):
             'max_ang_rate={:.0f}deg/s voxel={:.3f}m exports={} output_dir={}'.format(
                 g('cloud_topic'), self.max_dt, self.scan_mid_offset,
                 np.degrees(self.max_ang_rate), self.voxel,
-                ', '.join('{}@{:.2f}m{}'.format(e['name'], e['height'],
-                                                ' flipped' if e['flip'] else '')
-                          for e in self.exports), self.output_dir))
+                ', '.join('{}@{:.2f}m roll {:g} pitch {:g}'.format(
+                    e['name'], e['height'], e['roll'], e['pitch']) for e in self.exports),
+                self.output_dir))
 
         if bool(g('accumulate')):
             self._autostart = str(g('map_name')) or datetime.now().strftime('map_%Y%m%d_%H%M%S')

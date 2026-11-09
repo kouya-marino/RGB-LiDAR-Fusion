@@ -12,7 +12,7 @@ and people expect:
 
 A robot export moves the origin up to that robot's lidar height, as if the
 robot's lidar had started where the rig's lidar did: p_robot = p_map - (0, 0, h),
-optionally flipped for a lidar whose driver reports it upside down.
+rotated by the robot lidar's pitch and roll (roll 180 = upside down).
 
 All 4x4 matrices are parent <- child (they map child-frame points into the
 parent frame). Pure numpy, no ROS.
@@ -59,18 +59,23 @@ def level_frame(up: np.ndarray, forward_hint: np.ndarray, origin: np.ndarray,
     return T
 
 
-def robot_frame(height: float, flip: bool = False) -> np.ndarray:
-    """T_robot_map for a robot lidar at `height` above the map's floor origin.
+def robot_frame(height: float, roll_deg: float = 0.0, pitch_deg: float = 0.0) -> np.ndarray:
+    """T_robot_map: map points -> a robot lidar's frame, with that lidar at
+    `height` above the map's floor origin (facing +X of the map).
 
-    flip=True gives a lidar reported upside down (180 deg about X): z down,
-    floor at z = +height. Most drivers correct an inverted mount themselves
-    (e.g. livox_ros_driver2 with roll 180), in which case leave it False.
+    The lidar is pitched by `pitch_deg` about the side axis (nose down
+    positive), then rolled by `roll_deg` about its own forward axis: roll 180
+    is upside down (z down, floor at z = +height), values between are tilted
+    sideways. Most drivers correct an upside-down mount themselves (e.g.
+    livox_ros_driver2 with roll 180), in which case use 0.
     """
+    r, p = np.radians(float(roll_deg)), np.radians(float(pitch_deg))
+    Rx = np.array([[1, 0, 0], [0, np.cos(r), -np.sin(r)], [0, np.sin(r), np.cos(r)]])
+    Ry = np.array([[np.cos(p), 0, np.sin(p)], [0, 1, 0], [-np.sin(p), 0, np.cos(p)]])
+    R_map_lidar = Ry @ Rx
     T = np.eye(4)
-    T[2, 3] = -float(height)
-    if flip:
-        F = np.diag([1.0, -1.0, -1.0, 1.0])
-        T = F @ T
+    T[:3, :3] = R_map_lidar.T
+    T[:3, 3] = -R_map_lidar.T @ np.array([0.0, 0.0, float(height)])
     return T
 
 

@@ -2,8 +2,9 @@
 
 A robot export is the saved map (map frame: floor at z = 0) re-expressed with
 the origin at that robot's lidar, as if the robot's lidar had started where the
-rig's lidar did: p_robot = p_map - (0, 0, height), optionally flipped for a
-lidar its driver reports upside down (see mapframe.robot_frame).
+rig's lidar did: p_robot = p_map - (0, 0, height), then rotated for a lidar
+that is tilted: pitch (nose down positive) and roll about its forward axis
+(180 = upside down), as its driver reports it (see mapframe.robot_frame).
 
 The list is edited in the web UI and kept in <output_dir>/robots.json, so it
 survives restarts without touching the tracked config. Pure Python + numpy.
@@ -22,11 +23,14 @@ from rgb_lidar_fusion.mapframe import apply, robot_frame
 NAME_RE = re.compile(r'^[A-Za-z0-9_-]{1,32}$')
 MAX_ROBOTS = 10
 MIN_HEIGHT, MAX_HEIGHT = 0.05, 5.0
+MIN_ROLL, MAX_ROLL = 0.0, 180.0
+MIN_PITCH, MAX_PITCH = -90.0, 90.0
 FILENAME = 'robots.json'
 
 
 def validate(robots) -> Tuple[Optional[List[dict]], str]:
-    """(clean list, '') or (None, reason). Each robot: name, height (m), flip."""
+    """(clean list, '') or (None, reason). Each robot: name, height (m), roll and
+    pitch (deg). An older `flip: true` is read as roll 180."""
     if not isinstance(robots, list):
         return None, 'robots must be a list'
     if len(robots) > MAX_ROBOTS:
@@ -48,7 +52,17 @@ def validate(robots) -> Tuple[Optional[List[dict]], str]:
         if not MIN_HEIGHT <= height <= MAX_HEIGHT:
             return None, 'robot {!r}: height must be {:.0f}-{:.0f} cm'.format(
                 name, MIN_HEIGHT * 100, MAX_HEIGHT * 100)
-        clean.append(dict(name=name, height=round(height, 4), flip=bool(r.get('flip', False))))
+        angles = {}
+        for key, lo, hi in (('roll', MIN_ROLL, MAX_ROLL), ('pitch', MIN_PITCH, MAX_PITCH)):
+            default = 180.0 if key == 'roll' and r.get('flip') else 0.0
+            try:
+                angles[key] = float(r.get(key, default))
+            except (TypeError, ValueError):
+                return None, 'robot {!r}: {} must be a number'.format(name, key)
+            if not lo <= angles[key] <= hi:
+                return None, 'robot {!r}: {} must be {:.0f} to {:.0f} deg'.format(name, key, lo, hi)
+        clean.append(dict(name=name, height=round(height, 4), roll=round(angles['roll'], 2),
+                          pitch=round(angles['pitch'], 2)))
     return clean, ''
 
 
@@ -73,8 +87,8 @@ def save(output_dir: str, robots: Sequence[dict]) -> None:
 
 def describe(robots: Sequence[dict]) -> List[dict]:
     """The robots as recorded in a map's info.json."""
-    return [dict(r, frame='lidar at {:.3f} m{}'.format(
-        r['height'], ', upside down' if r['flip'] else '')) for r in robots]
+    return [dict(r, frame='lidar at {:.3f} m, roll {:g} deg, pitch {:g} deg'.format(
+        r['height'], r['roll'], r['pitch'])) for r in robots]
 
 
 def write_exports(folder: str, xyz_c: np.ndarray, rgb: np.ndarray, xyz_f: np.ndarray,
@@ -86,7 +100,7 @@ def write_exports(folder: str, xyz_c: np.ndarray, rgb: np.ndarray, xyz_f: np.nda
     for r in robots:
         where = os.path.join(folder, r['name'])
         os.makedirs(where, exist_ok=True)
-        T = robot_frame(r['height'], r['flip'])
+        T = robot_frame(r['height'], r.get('roll', 0.0), r.get('pitch', 0.0))
         write_both(os.path.join(where, 'colored'), apply(T, xyz_c), rgb)
         pts = apply(T, xyz_f)
         write_pcd_xyzi(os.path.join(where, 'full.pcd'), pts, inten)

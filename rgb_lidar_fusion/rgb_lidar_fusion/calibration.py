@@ -106,11 +106,15 @@ def camera_delta(T_seed: np.ndarray, delta_deg: Sequence[float]) -> np.ndarray:
 
 
 def auto_refine(score: Callable[[List[float]], float], schedule=AUTO_SCHEDULE,
-                max_passes: int = 4, log: Optional[Callable[[str], None]] = None):
+                max_passes: int = 4, log: Optional[Callable[[str], None]] = None,
+                bound: float = 5.0):
     """Coordinate descent on (tilt, pan, roll), starting at zero. Each round
     repeats until no axis moves (the axes still interact a little). Returns
     (delta_deg, start_score, final_score, edge_hits): edge_hits lists axes whose
-    optimum sat at the edge of the final search span, i.e. it may lie outside."""
+    optimum sat at the edge of the final search span, i.e. it may lie outside,
+    or at `bound`: no axis may move more than `bound` degrees in total, a
+    physical limit for a sensor on a fixed mount (repeated passes could
+    otherwise walk the solution arbitrarily far on a bad capture)."""
     log = log or (lambda _s: None)
     delta = [0.0, 0.0, 0.0]
     start = score(delta)
@@ -126,7 +130,7 @@ def auto_refine(score: Callable[[List[float]], float], schedule=AUTO_SCHEDULE,
                 for off in offsets:
                     trial = list(delta)
                     trial[i] = base + float(off)
-                    vals.append(score(trial))
+                    vals.append(score(trial) if abs(trial[i]) <= bound + 1e-9 else np.nan)
                 vals = np.array(vals)
                 if not np.isfinite(vals).any():
                     continue
@@ -142,6 +146,8 @@ def auto_refine(score: Callable[[List[float]], float], schedule=AUTO_SCHEDULE,
                 break
         if rnd == len(schedule):
             edge_hits = hits
+    edge_hits += ['{} at the {:.0f} deg limit'.format(a, bound)
+                  for a, v in zip(AXES, delta) if abs(v) >= bound - 1e-6]
     final = score(delta)
     return delta, start, final, edge_hits
 

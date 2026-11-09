@@ -51,8 +51,21 @@ def test_robot_frames_go2_and_g1():
     floor_pt = [[3.0, 1.0, 0.0]]
     np.testing.assert_allclose(apply(robot_frame(0.45), floor_pt), [[3, 1, -0.45]])
     np.testing.assert_allclose(apply(robot_frame(1.25), floor_pt), [[3, 1, -1.25]])
-    # a lidar reported upside down: z flips, y flips (180 deg about X)
-    np.testing.assert_allclose(apply(robot_frame(1.25, flip=True), floor_pt), [[3, -1, 1.25]])
+    # a lidar reported upside down: z flips, y flips (roll 180 about X)
+    np.testing.assert_allclose(apply(robot_frame(1.25, roll_deg=180), floor_pt), [[3, -1, 1.25]],
+                               atol=1e-12)
+
+
+def test_robot_frame_pitch_nose_down():
+    # lidar 1 m up, pitched 90 deg nose down: it looks straight at the floor, so
+    # the floor point below it is straight ahead (+X) at 1 m
+    np.testing.assert_allclose(apply(robot_frame(1.0, pitch_deg=90), [[0, 0, 0]]), [[1, 0, 0]],
+                               atol=1e-12)
+    # 30 deg nose down: a floor point 1/tan(30) m ahead lies on the lidar's X axis
+    d = 1.0 / np.tan(np.radians(30))
+    p = apply(robot_frame(1.0, pitch_deg=30), [[d, 0, 0]])[0]
+    np.testing.assert_allclose(p[1:], [0, 0], atol=1e-12)
+    assert p[0] > 0
 
 
 def test_rotation_angle():
