@@ -15,6 +15,9 @@ Serves one static page (Three.js, vendored) plus a small JSON/binary API:
   POST /api/start  {"name": "...", "lidar_height": 0.715, "overwrite": false}
                                        start recording a map (overwrite: replace
                                        an existing map of that name when saved)
+  POST /api/maps/<name>/delete {"confirm": "<name>"}
+                                       delete a saved map's folder (not while
+                                       it is being recorded)
   POST /api/stop                       stop and save
   POST /api/cancel                     stop and discard
 
@@ -27,7 +30,9 @@ Only the standard library's http.server is used: no web framework to install.
 """
 import json
 import os
+import shutil
 import threading
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, Optional, Tuple
@@ -216,6 +221,31 @@ class WebUiNode(Node):
                     maps.append(info)
         return sorted(maps, key=lambda m: m.get('started', ''), reverse=True)
 
+    def delete_map(self, name: str, confirm: str):
+        if not valid_map_name(name):
+            return False, 'invalid map name'
+        if confirm != name:
+            return False, 'type the map name exactly to delete it'
+        # decide on a status newer than this request: the cached one can be up
+        # to 0.5 s old and miss a recording that has just started
+        asked = self.get_clock().now().nanoseconds * 1e-9
+        deadline = time.monotonic() + 2.0
+        while self._status_t <= asked and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if self._status_t <= asked:
+            return False, 'the colorizer is not answering; try again'
+        st = self.status()
+        if st.get('recording') and st.get('map_name') == name:
+            return False, 'this map is being recorded; stop or cancel first'
+        root = os.path.realpath(self.output_dir)
+        folder = os.path.realpath(os.path.join(root, name))
+        if os.path.dirname(folder) != root or not os.path.isfile(os.path.join(folder, 'info.json')):
+            return False, 'no saved map named {!r}'.format(name)
+        shutil.rmtree(folder)
+        self._saved_cache = {}
+        self.get_logger().info('deleted map {!r}'.format(name))
+        return True, 'deleted {!r}'.format(name)
+
     def saved_bin(self, name: str, which: str) -> Optional[bytes]:
         path = os.path.join(self.output_dir, name, which + '.pcd')
         if not os.path.isfile(path):
@@ -318,6 +348,9 @@ class _Handler(BaseHTTPRequestHandler):
                               body.get('overwrite') is True)
         elif path in ('/api/stop', '/api/cancel'):
             ok, msg = n.trigger(path.rsplit('/', 1)[1])
+        elif path.startswith('/api/maps/') and path.endswith('/delete') and \
+                len(path.split('/')) == 5:
+            ok, msg = n.delete_map(path.split('/')[3], str(body.get('confirm', '')))
         else:
             return self._json({'ok': False, 'message': 'not found'}, HTTPStatus.NOT_FOUND)
         self._json({'ok': ok, 'message': msg}, HTTPStatus.OK if ok else HTTPStatus.CONFLICT)

@@ -137,6 +137,22 @@
     </form>
   </dialog>
 
+  <dialog id="delete-dlg" aria-labelledby="dl-title">
+    <form method="dialog" class="dlg">
+      <h2 id="dl-title">Delete a map?</h2>
+      <p>This permanently deletes <code id="dl-name"></code> from this computer: the colored and
+         full clouds, the robot exports, the trajectory and its info. It cannot be undone.</p>
+      <label class="field">
+        <span>Type the map name to confirm</span>
+        <input id="dl-input" autocomplete="off" spellcheck="false">
+      </label>
+      <div class="row">
+        <button class="btn ghost" value="cancel" formnovalidate>Cancel</button>
+        <button class="btn danger-solid" value="ok" id="dl-ok" disabled>Delete</button>
+      </div>
+    </form>
+  </dialog>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>

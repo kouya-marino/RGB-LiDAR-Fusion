@@ -500,6 +500,32 @@ function askOverwrite(map, cm) {
   return p;
 }
 
+async function deleteMap(map) {
+  const input = $('dl-input');
+  $('dl-name').textContent = map.name;
+  input.value = '';
+  $('dl-ok').disabled = true;
+  input.oninput = () => { $('dl-ok').disabled = input.value !== map.name; };
+  const p = showDialog($('delete-dlg'), () => input.value === map.name);
+  input.focus();
+  if (!await p) return;
+  let r;
+  try {
+    const res = await fetch(`/api/maps/${encodeURIComponent(map.name)}/delete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: map.name }) });
+    r = await res.json();
+  } catch (e) {
+    r = { ok: false, message: e.message };
+  }
+  flash(r.message, r.ok ? 'ok' : 'error');
+  if (r.ok) {
+    openMaps.delete(map.name);
+    if (state.savedName === map.name) goLive();
+    await loadMaps();
+  }
+}
+
 // ---- saved maps -----------------------------------------------------------
 let lastMaps = [];
 
@@ -564,6 +590,13 @@ function renderMaps(maps) {
     view.textContent = viewing ? 'Viewing' : 'View in 3D';
     view.disabled = viewing;
     view.addEventListener('click', () => openSaved(m.name));
+    const del = document.createElement('button');
+    del.className = 'btn small ghost danger';
+    del.textContent = 'Delete…';
+    del.addEventListener('click', () => deleteMap(m));
+    const actions = document.createElement('div');
+    actions.className = 'row';
+    actions.append(view, del);
 
     const files = document.createElement('div');
     files.className = 'map-files';
@@ -590,7 +623,7 @@ function renderMaps(maps) {
         files.append(a);
       }
     }
-    body.append(meta, view, files);
+    body.append(meta, actions, files);
     li.append(head, body);
     ul.append(li);
   }
