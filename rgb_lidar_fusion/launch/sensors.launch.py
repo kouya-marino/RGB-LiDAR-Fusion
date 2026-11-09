@@ -79,7 +79,7 @@ def generate_launch_description():
             SHARE, 'config', 'livox', 'MID360s_config.json')),
         DeclareLaunchArgument('extrinsics', default_value=os.path.join(
             SHARE, 'config', 'mount_extrinsics.yaml')),
-        DeclareLaunchArgument('color_profile', default_value='1280x720x15'),
+        DeclareLaunchArgument('color_profile', default_value='1920x1080x15'),
         livox,
         OpaqueFunction(function=_realsense, condition=IfCondition(camera)),
         OpaqueFunction(function=_static_tf),

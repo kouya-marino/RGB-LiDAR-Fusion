@@ -87,7 +87,7 @@ cd /ws && colcon build && source install/setup.bash
 ros2 launch rgb_lidar_fusion sensors.launch.py
 ```
 
-This starts the Livox driver (`/livox/lidar` at 10 Hz with ~20k points, `/livox/imu` at 200 Hz), the RealSense color stream (`/camera/camera/color/image_raw`, 1280×720 at 15 fps), and the static `livox_frame → camera_link` transform from [`config/mount_extrinsics.yaml`](rgb_lidar_fusion/config/mount_extrinsics.yaml).
+This starts the Livox driver (`/livox/lidar` at 10 Hz with ~20k points, `/livox/imu` at 200 Hz), the RealSense color stream (`/camera/camera/color/image_raw`, 1920×1080 at 15 fps; `color_profile:=1280x720x15` for lighter recordings), and the static `livox_frame → camera_link` transform from [`config/mount_extrinsics.yaml`](rgb_lidar_fusion/config/mount_extrinsics.yaml).
 
 If the lidar driver logs `Init lds lidar success!` but no `/livox/lidar` topic appears, check the config format. A Mid-360S that gets the plain `MID360` config is discovered but never configured.
 
@@ -115,7 +115,7 @@ ros2 service call /colorizer/save_cloud std_srvs/srv/Trigger
 
 Launch arguments: `sensors:=false` (sensors already running, or playing a bag), `rviz:=false`, `color_profile:=WxHxFPS`. Colorizer tuning is in [`config/colorizer.yaml`](rgb_lidar_fusion/config/colorizer.yaml).
 
-**How it works.** The driver stamps each scan at the start of its 100 ms sweep. The colorizer waits until an image from after the sweep's midpoint has arrived, picks the nearest one, and drops the scan if the gap exceeds `max_dt` (50 ms). It then projects the points through the camera model, rejects points hidden behind nearer ones, and samples their colors. Images are subscribed **reliable**: a 720p frame is larger than DDS shared memory, and best-effort delivery lost about half the frames in testing.
+**How it works.** The driver stamps each scan at the start of its 100 ms sweep. The colorizer waits until an image from after the sweep's midpoint has arrived, picks the nearest one, and drops the scan if the gap exceeds `max_dt` (50 ms). It then projects the points through the camera model, rejects points hidden behind nearer ones, and samples their colors. Images are subscribed **reliable**: a full-resolution frame (6.2 MB at 1080p) is larger than DDS shared memory, and best-effort delivery lost about half the frames in testing. With reliable delivery, 1080p at 15 fps arrives without gaps and 98% of scans are colored.
 
 ## Example output
 

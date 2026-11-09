@@ -41,7 +41,7 @@ def generate_launch_description():
                               description='false: use sensors already running (or a bag)'),
         DeclareLaunchArgument('accumulate', default_value='false'),
         DeclareLaunchArgument('output_dir', default_value=os.path.join(os.getcwd(), 'output')),
-        DeclareLaunchArgument('color_profile', default_value='1280x720x15'),
+        DeclareLaunchArgument('color_profile', default_value='1920x1080x15'),
         DeclareLaunchArgument('rviz', default_value='true'),
         sensors,
         colorizer,
