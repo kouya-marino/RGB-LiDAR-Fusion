@@ -11,8 +11,10 @@ colorizer:
     max_range: 40.0
     occl_cell: 4
     occl_tol: 0.10
-    accumulate: false         # true: build a best-view voxel map (rig must stay still)
+    accumulate: false         # true: start recording `map_name` at launch (rig must stay still)
+    map_name: ''              # '' -> map_YYYYmmdd_HHMMSS
     voxel: 0.03
-    publish_period: 1.0
-    output_stem: colored_cloud
-    save_on_shutdown: true
+    publish_period: 1.0       # s, colored_map
+    full_publish_period: 2.0  # s, lidar_map (much larger)
+    image_queue: 5            # images held while busy (~6 MB each at 1080p)
+    save_on_shutdown: true    # a map still recording at shutdown is saved

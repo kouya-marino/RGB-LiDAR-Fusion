@@ -238,3 +238,19 @@ def test_xyzrgb_to_msg_layout_and_colour_bits():
     rec = np.frombuffer(bytes(msg.data), dtype=np.float32)
     np.testing.assert_allclose(rec[:3], [1, 2, 3])
     assert rec[3:4].view(np.uint32)[0] == 0xFF8001
+
+
+def test_pointcloud2_field_reads_livox_intensity_and_defaults():
+    from rgb_lidar_fusion.ros_conv import pointcloud2_field
+    msg = _livox_cloud([[1., 2., 3.], [4., 5., 6.]])
+    np.testing.assert_array_equal(pointcloud2_field(msg, 'intensity'), [42., 42.])
+    np.testing.assert_array_equal(pointcloud2_field(msg, 'missing', -1.), [-1., -1.])
+
+
+def test_xyzi_to_msg_roundtrip():
+    from rgb_lidar_fusion.ros_conv import pointcloud2_field, xyzi_to_msg
+    msg = xyzi_to_msg(np.array([[1., 2., 3.]]), np.array([77.]), 'livox_frame', None)
+    assert [f.name for f in msg.fields] == ['x', 'y', 'z', 'intensity']
+    msg.data = bytes(msg.data)
+    np.testing.assert_allclose(pointcloud2_to_xyz(msg), [[1, 2, 3]])
+    np.testing.assert_array_equal(pointcloud2_field(msg, 'intensity'), [77.])

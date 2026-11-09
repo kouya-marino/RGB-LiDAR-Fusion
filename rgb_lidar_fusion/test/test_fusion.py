@@ -1,5 +1,6 @@
 """Unit tests for the best-view voxel colour accumulator."""
 import numpy as np
+import pytest
 
 from rgb_lidar_fusion.fusion import Accumulator, view_quality
 from rgb_lidar_fusion.projection import CameraModel
@@ -143,3 +144,29 @@ def test_quality_is_bounded_unit_interval():
 def test_quality_empty_input():
     q = view_quality(np.zeros((0, 3)), np.zeros((0, 2)), CAM)
     assert q.shape == (0,)
+
+
+# --- VoxelGrid (full lidar map) -------------------------------------------
+
+def test_voxelgrid_one_point_per_voxel_and_earliest_wins():
+    from rgb_lidar_fusion.fusion import VoxelGrid
+    g = VoxelGrid(voxel=0.1)
+    g.add([[0.01, 0.01, 0.01], [0.02, 0.02, 0.02], [1.0, 1.0, 1.0]], [5.0, 9.0, 7.0])
+    g.add([[0.03, 0.03, 0.03]], [99.0])                   # same voxel as the first
+    assert g.count == 2
+    xyz, inten = g.export()
+    order = np.argsort(xyz[:, 0])
+    # earliest observation kept: 5.0 (not 9.0 or 99.0) for the voxel at the origin
+    np.testing.assert_array_equal(inten[order], [5.0, 7.0])
+
+
+def test_voxelgrid_mismatched_lengths_raise():
+    from rgb_lidar_fusion.fusion import VoxelGrid
+    with pytest.raises(ValueError):
+        VoxelGrid().add(np.zeros((3, 3)), np.zeros(2))
+
+
+def test_voxelgrid_empty_export():
+    from rgb_lidar_fusion.fusion import VoxelGrid
+    xyz, inten = VoxelGrid().export()
+    assert xyz.shape == (0, 3) and inten.shape == (0,)

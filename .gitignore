@@ -39,3 +39,6 @@ venv/
 
 # Colorizer output
 output/
+
+# Vendored third-party code is tracked as-is (its build/ folder is source, not output)
+!third_party/three/build/

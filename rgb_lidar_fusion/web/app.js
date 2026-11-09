@@ -1,0 +1,425 @@
+// Live colored map viewer. Talks to web_ui_node.py (see its docstring for the API).
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const $ = (id) => document.getElementById(id);
+
+const state = {
+  mode: 'live',            // 'live' | 'saved'
+  savedName: null,
+  status: null,
+  etags: {},
+  touched: false,          // stop auto-fitting once the user moves the view
+  fullColor: 'height',
+  fullData: null,          // last full-lidar cloud, kept to recolor on demand
+  busy: false,
+};
+
+// ---- scene ----------------------------------------------------------------
+const host = $('view');
+// ?shot keeps the drawn frame readable, so page screenshots (headless or
+// otherwise) capture the 3D view instead of a cleared canvas.
+const renderer = new THREE.WebGLRenderer({
+  antialias: true, preserveDrawingBuffer: new URLSearchParams(location.search).has('shot') });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+host.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0f14);
+const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 2000);
+camera.up.set(0, 0, 1);                       // lidar frame: Z up
+camera.position.set(-6, -6, 5);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.addEventListener('start', () => { state.touched = true; });
+
+const grid = new THREE.GridHelper(20, 20, 0x2b3a4d, 0x1a2330);
+grid.rotation.x = Math.PI / 2;                // XY plane
+scene.add(grid, new THREE.AxesHelper(0.5));
+
+const material = (size) => new THREE.PointsMaterial({ size, sizeAttenuation: false, vertexColors: true });
+const fullPts = new THREE.Points(new THREE.BufferGeometry(), material(2));
+const coloredPts = new THREE.Points(new THREE.BufferGeometry(), material(3));
+coloredPts.renderOrder = 1;
+scene.add(fullPts, coloredPts);
+
+function resize() {
+  const w = host.clientWidth || 1, h = host.clientHeight || 1;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(host);
+resize();
+(function loop() {
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+})();
+
+// ---- clouds ---------------------------------------------------------------
+function decode(buf, kind) {
+  const n = new DataView(buf).getUint32(0, true);
+  const xyz = new Float32Array(buf, 4, n * 3);
+  if (kind === 'rgb') return { n, xyz, rgb: new Uint8Array(buf, 4 + 12 * n, n * 3) };
+  return { n, xyz, inten: new Float32Array(buf, 4 + 12 * n, n) };
+}
+
+function setGeometry(points, xyz, colorAttr) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(xyz, 3));
+  g.setAttribute('color', colorAttr);
+  g.computeBoundingSphere();
+  points.geometry.dispose();
+  points.geometry = g;
+}
+
+function setColored(data) {
+  setGeometry(coloredPts, data.xyz, new THREE.Uint8BufferAttribute(data.rgb, 3, true));
+}
+
+// value -> blue..white..red ramp, clipped at the 2nd/98th percentile
+function ramp(values) {
+  const n = values.length;
+  const out = new Float32Array(n * 3);
+  if (!n) return out;
+  const sorted = Float32Array.from(values).sort();
+  const lo = sorted[Math.floor(n * 0.02)], hi = sorted[Math.floor(n * 0.98)];
+  const span = hi > lo ? hi - lo : 1;
+  const c = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const t = Math.min(1, Math.max(0, (values[i] - lo) / span));
+    c.setHSL(0.66 * (1 - t), 0.75, 0.5 + 0.12 * Math.sin(Math.PI * t));
+    out[i * 3] = c.r; out[i * 3 + 1] = c.g; out[i * 3 + 2] = c.b;
+  }
+  return out;
+}
+
+function setFull(data) {
+  state.fullData = data;
+  let colors;
+  if (state.fullColor === 'gray') {
+    colors = new Float32Array(data.n * 3).fill(0.55);
+  } else if (state.fullColor === 'intensity') {
+    colors = ramp(data.inten);
+  } else {
+    const z = new Float32Array(data.n);
+    for (let i = 0; i < data.n; i++) z[i] = data.xyz[i * 3 + 2];
+    colors = ramp(z);
+  }
+  setGeometry(fullPts, data.xyz, new THREE.BufferAttribute(colors, 3));
+}
+
+// Robust bounds: the 2nd..98th percentile on each axis of a point sample, so a
+// few stray far returns do not shrink the room to a speck.
+function robustBox() {
+  const xs = [], ys = [], zs = [];
+  for (const p of [fullPts, coloredPts]) {
+    const a = p.visible && p.geometry.attributes.position;
+    if (!a || !a.count) continue;
+    const step = Math.max(1, Math.floor(a.count / 20000));
+    for (let i = 0; i < a.count; i += step) { xs.push(a.getX(i)); ys.push(a.getY(i)); zs.push(a.getZ(i)); }
+  }
+  if (!xs.length) return null;
+  const q = (v, f) => v[Math.min(v.length - 1, Math.floor(f * v.length))];
+  const lim = (v) => { v.sort((a, b) => a - b); return [q(v, 0.02), q(v, 0.98)]; };
+  const [x0, x1] = lim(xs), [y0, y1] = lim(ys), [z0, z1] = lim(zs);
+  return new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1));
+}
+
+function fitView(force = false) {
+  if (state.touched && !force) return;
+  const box = robustBox();
+  if (!box) return;
+  const center = box.getCenter(new THREE.Vector3());
+  const r = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1);
+  controls.target.copy(center);
+  camera.position.set(center.x - r * 1.1, center.y - r * 1.1, center.z + r * 0.9);
+  if (force) state.touched = false;
+}
+
+async function fetchBin(url, key) {
+  const headers = state.etags[key] ? { 'If-None-Match': state.etags[key] } : {};
+  const res = await fetch(url, { headers });
+  if (res.status === 304) return null;
+  if (!res.ok) throw new Error(`${url}: ${res.status}`);
+  state.etags[key] = res.headers.get('ETag');
+  return res.arrayBuffer();
+}
+
+function clearClouds() {
+  for (const p of [fullPts, coloredPts]) { p.geometry.dispose(); p.geometry = new THREE.BufferGeometry(); }
+  state.fullData = null;
+  state.etags = {};
+}
+
+// ---- live / saved ---------------------------------------------------------
+let liveTimer = null;
+
+async function pollLive() {
+  if (state.mode !== 'live') return;
+  const rec = state.status?.recording;
+  // recording -> the growing maps; idle -> the latest scans as a preview
+  const [c, f] = rec ? ['colored', 'full'] : ['scan', 'lidar'];
+  try {
+    const [cb, fb] = await Promise.all([
+      fetchBin(`/api/live/${c}.bin`, c), fetchBin(`/api/live/${f}.bin`, f)]);
+    if (state.mode !== 'live') return;
+    if (cb) setColored(decode(cb, 'rgb'));
+    if (fb) setFull(decode(fb, 'i'));
+    if (cb || fb) fitView();
+  } catch { /* keep polling */ }
+  updateOverlay();
+  liveTimer = setTimeout(pollLive, rec ? 1000 : 400);
+}
+
+function goLive() {
+  history.replaceState(null, '', location.pathname);
+  state.mode = 'live';
+  state.savedName = null;
+  clearClouds();
+  state.touched = false;
+  $('btn-live').hidden = true;
+  renderBanner();
+  renderMaps(lastMaps);
+  clearTimeout(liveTimer);
+  pollLive();
+}
+
+async function openSaved(name) {
+  history.replaceState(null, '', `?map=${encodeURIComponent(name)}`);
+  state.mode = 'saved';
+  state.savedName = name;
+  clearTimeout(liveTimer);
+  clearClouds();
+  state.touched = false;
+  $('btn-live').hidden = false;
+  renderBanner('Loading…');
+  renderMaps(lastMaps);
+  try {
+    const [cb, fb] = await Promise.all([
+      fetch(`/api/maps/${name}/colored.bin`).then((r) => (r.ok ? r.arrayBuffer() : null)),
+      fetch(`/api/maps/${name}/full.bin`).then((r) => (r.ok ? r.arrayBuffer() : null))]);
+    if (state.savedName !== name) return;
+    if (cb) setColored(decode(cb, 'rgb'));
+    if (fb) setFull(decode(fb, 'i'));
+    fitView(true);
+  } catch (e) {
+    flash(`Could not load ${name}: ${e.message}`, 'error');
+  }
+  renderBanner();
+  updateOverlay();
+}
+
+// ---- status, banner, overlay ---------------------------------------------
+const fmtInt = (n) => (n == null ? '–' : Number(n).toLocaleString());
+const fmtTime = (s) => {
+  if (!s) return '–';
+  const m = Math.floor(s / 60), r = Math.floor(s % 60);
+  return `${m}:${String(r).padStart(2, '0')}`;
+};
+
+async function pollStatus() {
+  try {
+    const res = await fetch('/api/status');
+    state.status = await res.json();
+  } catch {
+    state.status = { connected: false };
+  }
+  renderStatus();
+  setTimeout(pollStatus, 1000);
+}
+
+function renderStatus() {
+  const s = state.status || {};
+  const pill = $('pill');
+  if (!s.connected) {
+    pill.dataset.state = 'offline';
+    $('pill-text').textContent = 'Colorizer offline';
+  } else if (s.recording) {
+    pill.dataset.state = 'recording';
+    $('pill-text').textContent = `Recording · ${s.map_name}`;
+  } else {
+    pill.dataset.state = 'idle';
+    $('pill-text').textContent = s.camera_ok ? 'Ready' : 'Waiting for camera';
+  }
+  $('st-colored').textContent = s.recording ? fmtInt(s.colored_points) : '–';
+  $('st-full').textContent = s.recording ? fmtInt(s.full_points) : '–';
+  $('st-time').textContent = s.recording ? fmtTime(s.elapsed_s) : '–';
+
+  $('rec-idle').hidden = !!s.recording;
+  $('rec-active').hidden = !s.recording;
+  $('rec-name').textContent = s.map_name || '';
+  $('btn-start').disabled = !s.connected || state.busy;
+  $('btn-stop').disabled = state.busy;
+  $('btn-cancel').disabled = state.busy;
+  if (state.mode === 'live') renderBanner();
+}
+
+function renderBanner(text) {
+  const s = state.status || {};
+  let t = text;
+  if (!t) {
+    if (state.mode === 'saved') t = `Saved map · ${state.savedName}`;
+    else if (s.recording) t = `Live map · ${s.map_name}`;
+    else t = 'Live preview · latest scan';
+  }
+  $('banner-text').textContent = t;
+}
+
+function updateOverlay() {
+  const s = state.status || {};
+  const empty = !(coloredPts.geometry.attributes.position?.count || fullPts.geometry.attributes.position?.count);
+  let text = '';
+  if (state.mode === 'live' && empty) {
+    if (!s.connected) text = 'Waiting for the colorizer… is colorize.launch.py running?';
+    else text = 'Waiting for sensor data…';
+  }
+  $('overlay').hidden = !text;
+  $('overlay-text').textContent = text;
+}
+
+let flashTimer = null;
+function flash(text, kind = '') {
+  const el = $('rec-msg');
+  el.textContent = text;
+  el.className = `msg ${kind}`;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { el.textContent = ''; }, 6000);
+}
+
+// ---- recording controls --------------------------------------------------
+function defaultName() {
+  const d = new Date(), p = (n) => String(n).padStart(2, '0');
+  return `map_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+async function post(path, body) {
+  state.busy = true;
+  renderStatus();
+  try {
+    const res = await fetch(path, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}) });
+    return await res.json();
+  } catch (e) {
+    return { ok: false, message: e.message };
+  } finally {
+    state.busy = false;
+    renderStatus();
+  }
+}
+
+$('btn-start').addEventListener('click', async () => {
+  const input = $('map-name');
+  const name = input.value.trim() || defaultName();
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(name)) {
+    flash('Use 1–64 letters, digits, _ or -', 'error');
+    input.focus();
+    return;
+  }
+  const r = await post('/api/start', { name });
+  flash(r.message, r.ok ? 'ok' : 'error');
+  if (r.ok) {
+    input.value = '';
+    if (state.mode !== 'live') goLive(); else { clearClouds(); state.touched = false; }
+  }
+});
+
+$('btn-stop').addEventListener('click', async () => {
+  const r = await post('/api/stop');
+  flash(r.ok ? 'Map saved.' : r.message, r.ok ? 'ok' : 'error');
+  if (r.ok) { await loadMaps(); clearClouds(); }
+});
+
+$('btn-cancel').addEventListener('click', async () => {
+  if (!confirm('Discard this recording? Nothing will be saved.')) return;
+  const r = await post('/api/cancel');
+  flash(r.ok ? 'Recording discarded.' : r.message, r.ok ? '' : 'error');
+  if (r.ok) clearClouds();
+});
+
+// ---- layers ---------------------------------------------------------------
+$('show-colored').addEventListener('change', (e) => { coloredPts.visible = e.target.checked; });
+$('show-full').addEventListener('change', (e) => { fullPts.visible = e.target.checked; });
+$('full-color').addEventListener('change', (e) => {
+  state.fullColor = e.target.value;
+  if (state.fullData) setFull(state.fullData);
+});
+$('point-size').addEventListener('input', (e) => {
+  const v = Number(e.target.value);
+  $('size-out').textContent = v;
+  fullPts.material.size = v;
+  coloredPts.material.size = v + 1;
+});
+$('btn-fit').addEventListener('click', () => fitView(true));
+$('btn-live').addEventListener('click', goLive);
+
+// ---- saved maps -----------------------------------------------------------
+let lastMaps = [];
+
+async function loadMaps() {
+  try {
+    lastMaps = await (await fetch('/api/maps')).json();
+  } catch { /* keep the last list */ }
+  renderMaps(lastMaps);
+}
+
+function renderMaps(maps) {
+  const ul = $('maps');
+  ul.replaceChildren();
+  if (!maps.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'No saved maps yet.';
+    ul.append(li);
+    return;
+  }
+  for (const m of maps) {
+    const li = document.createElement('li');
+    li.className = 'map-item' + (state.savedName === m.name ? ' active' : '');
+
+    const top = document.createElement('div');
+    top.className = 'map-top';
+    const name = document.createElement('span');
+    name.className = 'map-name';
+    name.textContent = m.name;
+    const view = document.createElement('button');
+    view.className = 'btn small';
+    view.textContent = state.savedName === m.name ? 'Viewing' : 'View';
+    view.disabled = state.savedName === m.name;
+    view.addEventListener('click', () => openSaved(m.name));
+    top.append(name, view);
+
+    const meta = document.createElement('div');
+    meta.className = 'map-meta';
+    // stored with its UTC offset; shown in the viewer's local time
+    const when = m.started ? new Date(m.started).toLocaleString([], {
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    meta.textContent = `${when} · ${fmtTime(m.duration_s)} · ${fmtInt(m.colored_points)} colored · ${fmtInt(m.full_points)} full`;
+
+    const files = document.createElement('div');
+    files.className = 'map-files';
+    for (const f of m.files || []) {
+      if (f === 'info.json') continue;
+      const a = document.createElement('a');
+      a.href = `/api/maps/${m.name}/files/${f}`;
+      a.textContent = f;
+      a.download = `${m.name}_${f}`;
+      files.append(a);
+    }
+    li.append(top, meta, files);
+    ul.append(li);
+  }
+}
+
+$('btn-refresh').addEventListener('click', loadMaps);
+
+// ---- start ----------------------------------------------------------------
+$('map-name').placeholder = defaultName();
+pollStatus();
+loadMaps();
+setInterval(loadMaps, 15000);
+// ?map=<name> opens a saved map directly (a link you can share)
+const linked = new URLSearchParams(location.search).get('map');
+if (linked && /^[A-Za-z0-9_-]{1,64}$/.test(linked)) openSaved(linked); else pollLive();

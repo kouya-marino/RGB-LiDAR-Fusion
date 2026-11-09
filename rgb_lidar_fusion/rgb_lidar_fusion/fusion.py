@@ -17,7 +17,7 @@ import numpy as np
 _BITS = 21
 _OFFSET = 1 << (_BITS - 1)          # 2^20, maps signed index into [0, 2^21)
 _LIMIT = 1 << _BITS
-_COMPACT_THRESHOLD = 4_000_000      # observations buffered before forced compaction
+_COMPACT_THRESHOLD = 1_000_000      # observations buffered before forced compaction
 
 
 class Accumulator:
@@ -36,7 +36,10 @@ class Accumulator:
         self._xyz = np.zeros((0, 3), dtype=np.float32)
         self._rgb = np.zeros((0, 3), dtype=np.uint8)
         self._q = np.zeros(0, dtype=np.float32)
-        self._dirty = False
+        # New batches wait in a list and are merged once, at compaction: adding a
+        # scan must not copy the whole map (that is O(map) per scan).
+        self._pending = []
+        self._pending_n = 0
         self.dropped_out_of_range = 0
 
     # --- public API -----------------------------------------------------
@@ -64,14 +67,9 @@ class Accumulator:
             if idx.shape[0] == 0:
                 return
 
-        keys = self._pack(idx)
-        self._keys = np.concatenate([self._keys, keys])
-        self._xyz = np.concatenate([self._xyz, pts.astype(np.float32)])
-        self._rgb = np.concatenate([self._rgb, rgb])
-        self._q = np.concatenate([self._q, q])
-        self._dirty = True
-
-        if self._keys.shape[0] > _COMPACT_THRESHOLD:
+        self._pending.append((self._pack(idx), pts.astype(np.float32), rgb, q))
+        self._pending_n += idx.shape[0]
+        if self._pending_n > _COMPACT_THRESHOLD:
             self._compact()
 
     @property
@@ -100,8 +98,14 @@ class Accumulator:
 
     def _compact(self) -> None:
         """Collapse buffered observations to one winner per voxel."""
-        if not self._dirty:
+        if not self._pending:
             return
+        k, x, c, q = zip(*self._pending)
+        self._keys = np.concatenate((self._keys,) + k)
+        self._xyz = np.concatenate((self._xyz,) + x)
+        self._rgb = np.concatenate((self._rgb,) + c)
+        self._q = np.concatenate((self._q,) + q)
+        self._pending, self._pending_n = [], 0
         # Sort by (key asc, quality desc) so the first row of each key group is
         # that voxel's best view; np.unique then hands us exactly those rows.
         order = np.lexsort((-self._q, self._keys))
@@ -112,7 +116,6 @@ class Accumulator:
         self._xyz = self._xyz[winners]
         self._rgb = self._rgb[winners]
         self._q = self._q[winners]
-        self._dirty = False
 
 
 def view_quality(pts_cam: np.ndarray, uv: np.ndarray,
@@ -151,3 +154,69 @@ def view_quality(pts_cam: np.ndarray, uv: np.ndarray,
     if max_range is not None:
         q = np.where(z <= max_range, q, 0.0)
     return np.clip(q, 0.0, 1.0).astype(np.float32)
+
+
+class VoxelGrid:
+    """Uncoloured companion to `Accumulator`: one lidar point per voxel, with its
+    intensity, for the FULL lidar map.
+
+    The camera sees only part of the lidar's field of view, so the coloured map
+    alone discards most of the geometry. This keeps everything the lidar saw.
+    The earliest observation of a voxel is kept (there is no quality score
+    without a camera). Like `Accumulator`, new points are buffered and collapsed
+    lazily, so adding a scan never re-sorts the whole map.
+    """
+
+    def __init__(self, voxel: float = 0.03):
+        if voxel <= 0:
+            raise ValueError('voxel must be positive, got {!r}'.format(voxel))
+        self.voxel = float(voxel)
+        self._keys = np.zeros(0, dtype=np.int64)
+        self._xyz = np.zeros((0, 3), dtype=np.float32)
+        self._i = np.zeros(0, dtype=np.float32)
+        self._pending = []
+        self._pending_n = 0
+        self.dropped_out_of_range = 0
+
+    def add(self, pts: np.ndarray, intensity: np.ndarray) -> None:
+        pts = np.asarray(pts, dtype=np.float64).reshape(-1, 3)
+        inten = np.asarray(intensity, dtype=np.float32).ravel()
+        if pts.shape[0] != inten.shape[0]:
+            raise ValueError('add() got {} points but {} intensities'.format(
+                pts.shape[0], inten.shape[0]))
+        if pts.shape[0] == 0:
+            return
+        idx = np.floor(pts / self.voxel).astype(np.int64)
+        ok = np.all((idx >= -_OFFSET) & (idx < _OFFSET), axis=1)
+        if not ok.all():
+            self.dropped_out_of_range += int((~ok).sum())
+            idx, pts, inten = idx[ok], pts[ok], inten[ok]
+            if idx.shape[0] == 0:
+                return
+        self._pending.append((Accumulator._pack(idx), pts.astype(np.float32), inten))
+        self._pending_n += idx.shape[0]
+        if self._pending_n > _COMPACT_THRESHOLD:
+            self._compact()
+
+    @property
+    def count(self) -> int:
+        self._compact()
+        return int(self._keys.shape[0])
+
+    def export(self) -> Tuple[np.ndarray, np.ndarray]:
+        """Return `(xyz float32 (M,3), intensity float32 (M,))`."""
+        self._compact()
+        return self._xyz.copy(), self._i.copy()
+
+    def _compact(self) -> None:
+        if not self._pending:
+            return
+        k, x, i = zip(*self._pending)
+        self._keys = np.concatenate((self._keys,) + k)
+        self._xyz = np.concatenate((self._xyz,) + x)
+        self._i = np.concatenate((self._i,) + i)
+        self._pending, self._pending_n = [], 0
+        # np.unique's return_index is the FIRST occurrence; arrays are in
+        # insertion order (compacted voxels first), so the earliest view wins.
+        _, first = np.unique(self._keys, return_index=True)
+        self._keys, self._xyz, self._i = self._keys[first], self._xyz[first], self._i[first]

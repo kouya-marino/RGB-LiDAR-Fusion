@@ -124,3 +124,50 @@ def test_ply_roundtrip_exact_without_open3d(tmp_path):
     _, rec, _ = _read_ply(str(p))
     np.testing.assert_array_equal(np.stack([rec['x'], rec['y'], rec['z']], 1), xyz)
     np.testing.assert_array_equal(np.stack([rec['r'], rec['g'], rec['b']], 1), rgb)
+
+
+# --- full map, reading back, web encoding --------------------------------
+
+def test_pcd_xyzi_roundtrip(tmp_path):
+    from rgb_lidar_fusion.io_cloud import read_pcd, write_pcd_xyzi
+    xyz = np.array([[1, 2, 3], [-4, 5.5, 6]], dtype=np.float32)
+    inten = np.array([10, 200], dtype=np.float32)
+    p = tmp_path / 'f.pcd'
+    write_pcd_xyzi(str(p), xyz, inten)
+    rec = read_pcd(str(p))
+    assert rec.dtype.names == ('x', 'y', 'z', 'intensity')
+    np.testing.assert_array_equal(np.stack([rec['x'], rec['y'], rec['z']], 1), xyz)
+    np.testing.assert_array_equal(rec['intensity'], inten)
+
+
+def test_pcd_rgb_read_back_and_unpack(tmp_path):
+    from rgb_lidar_fusion.io_cloud import read_pcd, unpack_rgb
+    rgb = np.array([[255, 128, 1], [0, 0, 0]], dtype=np.uint8)
+    p = tmp_path / 'c.pcd'
+    write_pcd_rgb(str(p), np.zeros((2, 3)), rgb)
+    np.testing.assert_array_equal(unpack_rgb(read_pcd(str(p))['rgb']), rgb)
+
+
+def test_ply_xyzi_size(tmp_path):
+    from rgb_lidar_fusion.io_cloud import write_ply_xyzi
+    p = tmp_path / 'f.ply'
+    write_ply_xyzi(str(p), np.zeros((5, 3)), np.ones(5))
+    raw = p.read_bytes()
+    head, _, body = raw.partition(b'end_header\n')
+    assert b'property float intensity' in head and len(body) == 5 * 16
+
+
+def test_encode_xyzrgb_layout():
+    from rgb_lidar_fusion.io_cloud import encode_xyzrgb
+    b = encode_xyzrgb(np.array([[1., 2., 3.]]), np.array([[9, 8, 7]], dtype=np.uint8))
+    assert len(b) == 4 + 15
+    assert np.frombuffer(b[:4], np.uint32)[0] == 1
+    np.testing.assert_array_equal(np.frombuffer(b[4:16], '<f4'), [1, 2, 3])
+    assert list(b[16:]) == [9, 8, 7]
+
+
+def test_encode_xyzi_layout():
+    from rgb_lidar_fusion.io_cloud import encode_xyzi
+    b = encode_xyzi(np.array([[1., 2., 3.], [4., 5., 6.]]), np.array([0.5, 7.]))
+    assert len(b) == 4 + 2 * 16
+    np.testing.assert_array_equal(np.frombuffer(b[28:], '<f4'), [0.5, 7.])

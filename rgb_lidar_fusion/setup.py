@@ -15,6 +15,13 @@ setup(
         ('share/' + package_name + '/config', glob('config/*.yaml')),
         ('share/' + package_name + '/config/livox', glob('config/livox/*.json')),
         ('share/' + package_name + '/rviz', glob('rviz/*.rviz')),
+        ('share/' + package_name + '/web', glob('web/*')),
+        # Three.js, vendored in the repo's third_party/ (MIT, license kept)
+        ('share/' + package_name + '/vendor/three', ['../third_party/three/LICENSE']),
+        ('share/' + package_name + '/vendor/three/build',
+         ['../third_party/three/build/three.module.min.js']),
+        ('share/' + package_name + '/vendor/three/examples/jsm/controls',
+         ['../third_party/three/examples/jsm/controls/OrbitControls.js']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -27,6 +34,7 @@ setup(
     entry_points={
         'console_scripts': [
             'colorizer = rgb_lidar_fusion.colorizer_node:main',
+            'web_ui = rgb_lidar_fusion.web_ui_node:main',
         ],
     },
 )

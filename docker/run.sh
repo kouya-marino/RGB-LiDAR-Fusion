@@ -20,6 +20,7 @@ exec docker run -it --rm --name "$NAME" \
     --network host --ipc host --privileged \
     -v /dev:/dev \
     -e DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+    -v /etc/localtime:/etc/localtime:ro \
     -v "$REPO":/ws/src/rgb_lidar_fusion \
     -v rgb_lidar_fusion_build:/ws/build \
     -v rgb_lidar_fusion_install:/ws/install \

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Colored Map</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="importmap">
+    { "imports": {
+        "three": "/vendor/three/build/three.module.min.js",
+        "three/addons/": "/vendor/three/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <span class="title">RGB-LiDAR-Fusion</span>
+    </div>
+    <div class="pill" id="pill" data-state="offline"><span class="dot"></span><span id="pill-text">Connecting…</span></div>
+    <dl class="stats">
+      <div><dt>Colored</dt><dd id="st-colored">–</dd></div>
+      <div><dt>Full lidar</dt><dd id="st-full">–</dd></div>
+      <div><dt>Time</dt><dd id="st-time">–</dd></div>
+    </dl>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="card" id="rec-card">
+        <h2>Record a map</h2>
+        <p class="hint">Keep the rig still while recording. Two clouds are saved: the camera-colored points and the full lidar scan.</p>
+        <div id="rec-idle">
+          <label class="field">
+            <span>Map name</span>
+            <input id="map-name" autocomplete="off" spellcheck="false" maxlength="64" pattern="[A-Za-z0-9_-]{1,64}">
+          </label>
+          <button class="btn primary" id="btn-start"><span class="rec-dot"></span>Start recording</button>
+        </div>
+        <div id="rec-active" hidden>
+          <div class="rec-name"><span class="rec-dot live"></span><span id="rec-name"></span></div>
+          <div class="row">
+            <button class="btn primary" id="btn-stop">Stop &amp; save</button>
+            <button class="btn ghost danger" id="btn-cancel">Cancel</button>
+          </div>
+        </div>
+        <p class="msg" id="rec-msg" role="status"></p>
+      </section>
+
+      <section class="card">
+        <h2>Layers</h2>
+        <label class="check"><input type="checkbox" id="show-colored" checked><span class="swatch rgb"></span>Colored points</label>
+        <label class="check"><input type="checkbox" id="show-full" checked><span class="swatch full"></span>Full lidar</label>
+        <label class="field inline">
+          <span>Full lidar color</span>
+          <select id="full-color">
+            <option value="height">Height</option>
+            <option value="intensity">Intensity</option>
+            <option value="gray">Gray</option>
+          </select>
+        </label>
+        <label class="field inline">
+          <span>Point size <output id="size-out">2</output></span>
+          <input type="range" id="point-size" min="1" max="8" step="1" value="2">
+        </label>
+        <button class="btn ghost" id="btn-fit">Fit view</button>
+      </section>
+
+      <section class="card grow">
+        <div class="card-head">
+          <h2>Saved maps</h2>
+          <button class="btn ghost small" id="btn-refresh" title="Refresh">Refresh</button>
+        </div>
+        <ul class="maps" id="maps"><li class="empty">No saved maps yet.</li></ul>
+      </section>
+    </aside>
+
+    <section class="viewport">
+      <div id="view"></div>
+      <div class="banner" id="banner">
+        <span id="banner-text">Live preview</span>
+        <button class="btn small" id="btn-live" hidden>Back to live</button>
+      </div>
+      <div class="overlay" id="overlay" hidden><p id="overlay-text"></p></div>
+      <div class="help">Drag to orbit · right-drag to pan · scroll to zoom</div>
+    </section>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

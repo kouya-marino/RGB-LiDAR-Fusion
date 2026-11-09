@@ -22,25 +22,37 @@ def stamp_to_sec(stamp) -> float:
     return stamp.sec + stamp.nanosec * 1e-9
 
 
-def pointcloud2_to_xyz(msg: PointCloud2) -> np.ndarray:
-    """Extract (N,3) float64 xyz from a PointCloud2, whatever else it carries.
+def pointcloud2_to_array(msg: PointCloud2) -> np.ndarray:
+    """View a PointCloud2's data as a structured array keyed by field name.
 
     Lidar drivers add fields (intensity, tag, line, timestamp...) and may pack
-    them unaligned, so build the structured dtype from the message's own fields
-    rather than assuming a layout.
+    them unaligned, so the dtype is built from the message's own fields rather
+    than assuming a layout.
     """
-    names = {f.name: f for f in msg.fields}
-    for axis in ('x', 'y', 'z'):
-        if axis not in names:
-            raise ValueError('PointCloud2 has no {!r} field'.format(axis))
     dtype = np.dtype({
         'names': [f.name for f in msg.fields],
         'formats': [_DTYPE_OF[f.datatype] for f in msg.fields],
         'offsets': [f.offset for f in msg.fields],
         'itemsize': msg.point_step,
     })
-    arr = np.frombuffer(msg.data, dtype=dtype, count=msg.width * msg.height)
+    return np.frombuffer(msg.data, dtype=dtype, count=msg.width * msg.height)
+
+
+def pointcloud2_to_xyz(msg: PointCloud2) -> np.ndarray:
+    """Extract (N,3) float64 xyz from a PointCloud2, whatever else it carries."""
+    names = {f.name for f in msg.fields}
+    for axis in ('x', 'y', 'z'):
+        if axis not in names:
+            raise ValueError('PointCloud2 has no {!r} field'.format(axis))
+    arr = pointcloud2_to_array(msg)
     return np.stack([arr['x'], arr['y'], arr['z']], axis=1).astype(np.float64)
+
+
+def pointcloud2_field(msg: PointCloud2, name: str, default: float = 0.0) -> np.ndarray:
+    """One field as (N,) float32, or `default` everywhere if the cloud lacks it."""
+    if name not in {f.name for f in msg.fields}:
+        return np.full(msg.width * msg.height, default, dtype=np.float32)
+    return pointcloud2_to_array(msg)[name].astype(np.float32)
 
 
 def image_to_rgb(msg: Image) -> np.ndarray:
@@ -120,5 +132,28 @@ def xyzrgb_to_msg(xyz: np.ndarray, rgb: np.ndarray, frame_id: str,
     msg.fields = [PointField(name=name, offset=4 * i,
                              datatype=PointField.FLOAT32, count=1)
                   for i, name in enumerate(('x', 'y', 'z', 'rgb'))]
+    msg.data = record.tobytes(order='C')
+    return msg
+
+
+def xyzi_to_msg(xyz: np.ndarray, intensity: np.ndarray, frame_id: str,
+                stamp) -> PointCloud2:
+    """PointCloud2 with PCL's `x y z intensity` layout (16 bytes/point)."""
+    xyz = np.asarray(xyz, dtype=np.float32).reshape(-1, 3)
+    n = xyz.shape[0]
+    record = np.empty((n, 4), dtype=np.float32)
+    record[:, :3] = xyz
+    record[:, 3] = np.asarray(intensity, dtype=np.float32).ravel()
+    msg = PointCloud2()
+    msg.header.frame_id = frame_id
+    if stamp is not None:
+        msg.header.stamp = stamp
+    msg.height, msg.width = 1, n
+    msg.is_bigendian = False
+    msg.point_step, msg.row_step = 16, 16 * n
+    msg.is_dense = True
+    msg.fields = [PointField(name=name, offset=4 * i,
+                             datatype=PointField.FLOAT32, count=1)
+                  for i, name in enumerate(('x', 'y', 'z', 'intensity'))]
     msg.data = record.tobytes(order='C')
     return msg

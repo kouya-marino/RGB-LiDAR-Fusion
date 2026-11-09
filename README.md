@@ -13,7 +13,9 @@ Real-time RGB camera and Livox Mid-360 LiDAR fusion for generating colorized 3D 
 
 - Real-time colorization of every LiDAR scan (10 Hz) from the nearest-in-time RGB frame
 - Occlusion rejection, so foreground objects don't paint their color onto surfaces behind them
+- Map recording with two clouds per map: the **colored** points the camera sees, and the **full** lidar scan (the camera covers only part of the lidar's field of view)
 - Best-view voxel map: keeps the sharpest observation of each voxel instead of averaging into mud
+- **Web UI**: watch the map grow in 3D, start / stop / save recordings, browse and download saved maps
 - LiDAR ↔ camera extrinsic read from TF; camera intrinsics from the camera driver
 - Saves colored clouds as binary PCD (PCL `x y z rgb`) and PLY
 - ROS 2 Humble, fully containerized (ROS 1 planned)
@@ -94,28 +96,51 @@ If the lidar driver logs `Init lds lidar success!` but no `/livox/lidar` topic a
 ## Usage
 
 ```bash
-ros2 launch rgb_lidar_fusion colorize.launch.py
+ros2 launch rgb_lidar_fusion colorize.launch.py output_dir:=/ws/src/rgb_lidar_fusion/output
 ```
 
-This starts the sensors, the colorizer and RViz. The colorizer publishes:
+This starts the sensors, the colorizer and the web UI. Open **http://localhost:8080** (or `http://<this-pc>:8080` from another machine on the network).
 
-| Topic | Contents |
+### Web UI
+
+| | |
 |---|---|
-| `/colored_scan` | Each colored scan, XYZRGB in `livox_frame`, 10 Hz. Only points the camera can see. |
-| `/colored_map` | With `accumulate:=true`: a voxel map keeping the best view of each voxel. Without odometry this assumes the rig is **stationary**. |
+| **Live preview** | Before recording: the latest colored scan over the latest raw lidar scan. |
+| **Record a map** | Name it, press *Start recording*, keep the rig still, then *Stop & save* (or *Cancel* to discard). Both maps grow live in the 3D view. |
+| **Layers** | Colored points and full lidar on/off; color the full lidar by height, intensity or gray; point size; fit view. |
+| **Saved maps** | View any saved map in 3D, or download its `.pcd` / `.ply` files. `?map=<name>` links straight to one. |
 
-Build a map while the rig stays still, then save it:
+Each map is saved in its own folder:
+
+```
+output/<name>/
+  colored.pcd  colored.ply   # x y z rgb    - points the camera sees, best view per 3 cm voxel
+  full.pcd     full.ply      # x y z intensity - every lidar point, one per 3 cm voxel
+  info.json                  # start time, duration, scans, point counts
+```
+
+Without odometry, a map assumes the rig is **stationary**; moving it while recording smears the map.
+
+### ROS interface
+
+| | |
+|---|---|
+| `/colored_scan` | Each colored scan, XYZRGB in `livox_frame`, 10 Hz (only points the camera sees) |
+| `/colored_map`, `/lidar_map` | The growing maps while recording (1 s / 2 s) |
+| `/colorizer/status` | JSON status, 1 Hz |
+| `/colorizer/start_map`, `stop_map`, `cancel_map`, `save_cloud` | `std_srvs/Trigger`; the name comes from the `map_name` parameter |
+
+Recording from the command line:
 
 ```bash
-ros2 launch rgb_lidar_fusion colorize.launch.py accumulate:=true \
-    output_dir:=/ws/src/rgb_lidar_fusion/output
-# saves output/colored_cloud.{pcd,ply} on Ctrl-C, or on demand:
-ros2 service call /colorizer/save_cloud std_srvs/srv/Trigger
+ros2 param set /colorizer map_name kitchen
+ros2 service call /colorizer/start_map std_srvs/srv/Trigger
+ros2 service call /colorizer/stop_map std_srvs/srv/Trigger    # saves output/kitchen/
 ```
 
-Launch arguments: `sensors:=false` (sensors already running, or playing a bag), `rviz:=false`, `color_profile:=WxHxFPS`. Colorizer tuning is in [`config/colorizer.yaml`](rgb_lidar_fusion/config/colorizer.yaml).
+Launch arguments: `sensors:=false` (sensors already running, or playing a bag), `web:=false`, `port:=8080`, `rviz:=true`, `accumulate:=true` (start recording at launch), `color_profile:=WxHxFPS`. Colorizer tuning is in [`config/colorizer.yaml`](rgb_lidar_fusion/config/colorizer.yaml).
 
-**How it works.** The driver stamps each scan at the start of its 100 ms sweep. The colorizer waits until an image from after the sweep's midpoint has arrived, picks the nearest one, and drops the scan if the gap exceeds `max_dt` (50 ms). It then projects the points through the camera model, rejects points hidden behind nearer ones, and samples their colors. Images are subscribed **reliable**: a full-resolution frame (6.2 MB at 1080p) is larger than DDS shared memory, and best-effort delivery lost about half the frames in testing. With reliable delivery, 1080p at 15 fps arrives without gaps and 98% of scans are colored.
+**How it works.** The driver stamps each scan at the start of its 100 ms sweep. The colorizer waits until an image from after the sweep's midpoint has arrived, picks the nearest one, and drops the scan if the gap exceeds `max_dt` (50 ms). It then projects the points through the camera model, rejects points hidden behind nearer ones, and samples their colors. Images are subscribed **reliable**: a full-resolution frame (6.2 MB at 1080p) is larger than DDS shared memory, and best-effort delivery lost about half the frames in testing. With reliable delivery, 1080p at 15 fps arrives without gaps; about 95% of scans are colored while recording.
 
 ## Example output
 
@@ -126,6 +151,8 @@ Sample colorized point clouds (`.pcd` / `.ply`) will be added under [`examples/`
 - [x] Docker dev environment (ROS 2 Humble, Livox + RealSense drivers)
 - [x] Live per-scan colorization node (ROS 2)
 - [x] Best-view voxel map for a stationary rig, PCD/PLY export
+- [x] Full lidar map saved alongside the colored map
+- [x] Web UI: live 3D map, recording controls, saved maps
 - [ ] Mapping while moving (LiDAR odometry, e.g. FAST-LIO)
 - [ ] LiDAR–camera extrinsic calibration tool
 - [ ] ROS 1 support

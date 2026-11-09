@@ -40,6 +40,16 @@ Visualization Manager:
       Color Transformer: RGB8
       Decay Time: 0
     - Class: rviz_default_plugins/PointCloud2
+      Name: Full lidar map
+      Enabled: true
+      Topic:
+        Value: /lidar_map
+        Reliability Policy: Reliable
+      Style: Points
+      Size (Pixels): 2
+      Color Transformer: AxisColor
+      Axis: Z
+    - Class: rviz_default_plugins/PointCloud2
       Name: Colored map
       Enabled: true
       Topic:
