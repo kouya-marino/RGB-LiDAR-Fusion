@@ -109,7 +109,7 @@ This starts the sensors, the colorizer and the web UI. Open **http://localhost:8
 | | |
 |---|---|
 | **Live preview** | Before recording: the latest colored scan over the latest full scan, levelled, with the rig's position and heading. |
-| **Record a map** | Name it, enter the **lidar height above the floor** (cm, to the centre of the dome; default 70, set in `colorizer.yaml`), wait for *Odometry · Camera · Held still* to turn green, press *Start recording* while holding the rig still, then walk slowly. *Stop & save* (or *Cancel* to discard). The maps and the path walked grow live in 3D. |
+| **Record a map** | Name it, enter the **lidar height above the floor** (cm, to the centre of the dome; default 70, set in `colorizer.yaml`), wait for *Odometry · Camera · Held still* to turn green, press *Start recording* while holding the rig still, then walk slowly. *Stop & save* (or *Cancel* to discard). The maps and the path walked grow live in 3D; the header shows the lidar's live height above the floor (and its lowest–highest range), the distance walked and the time. The height may change freely while you walk: it is only fixed at Start. |
 | **Layers** | Colored points, full lidar and path on/off; color the full lidar by height, intensity or gray; point size; fit view. |
 | **Saved maps** | View any saved map in 3D, or download its files: the map itself and each robot export. `?map=<name>` links straight to one. |
 

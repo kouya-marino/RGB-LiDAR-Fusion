@@ -283,6 +283,17 @@ function renderStatus() {
   $('st-colored').textContent = s.recording ? fmtInt(s.colored_points) : '–';
   $('st-full').textContent = s.recording ? fmtInt(s.full_points) : '–';
   $('st-walk').textContent = s.recording ? `${pathLength(s.path || []).toFixed(1)} m` : '–';
+  // live lidar height above the floor (map z), with the range seen this recording
+  if (s.recording && s.pose) {
+    const cm = Math.round(s.pose.z * 100);
+    if (state.heightRec !== s.map_name) { state.heightRec = s.map_name; state.hMin = cm; state.hMax = cm; }
+    state.hMin = Math.min(state.hMin, cm);
+    state.hMax = Math.max(state.hMax, cm);
+    $('st-height').textContent = state.hMin === state.hMax
+      ? `${cm} cm` : `${cm} cm (${state.hMin}–${state.hMax})`;
+  } else {
+    $('st-height').textContent = '–';
+  }
   $('st-time').textContent = s.recording ? fmtTime(s.elapsed_s) : '–';
 
   // default height = the colorizer's configured lidar_height, unless this
