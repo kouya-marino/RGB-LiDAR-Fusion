@@ -1,0 +1,36 @@
+# ROS / ROS2 / colcon / catkin build artifacts
+build/
+install/
+log/
+devel/
+logs/
+.catkin_workspace
+*.bag
+*.db3
+*.mcap
+
+# C/C++
+*.o
+*.so
+*.a
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+compile_commands.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Large data
+*.pcd
+*.ply
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
