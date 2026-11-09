@@ -1,7 +1,7 @@
 """Sensors + odometry + live colorizer + web UI (+ optional RViz).
 
-    ros2 launch rgb_lidar_fusion colorize.launch.py output_dir:=/ws/src/rgb_lidar_fusion/output
-    # then open http://localhost:8080
+    ros2 launch rgb_lidar_fusion colorize.launch.py
+    # then open http://localhost:8080; maps are saved in the repo's output/ (on the host)
     ros2 launch rgb_lidar_fusion colorize.launch.py odometry:=false   # stationary rig
 """
 import os
@@ -15,6 +15,11 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 SHARE = get_package_share_directory('rgb_lidar_fusion')
+# Save maps into the repo's output/ when it is mounted (docker/run.sh): that is
+# a folder on the host, so maps survive the container being stopped/removed.
+REPO = '/ws/src/rgb_lidar_fusion'
+DEFAULT_OUTPUT = os.path.join(REPO, 'output') if os.path.isdir(REPO) \
+    else os.path.join(os.getcwd(), 'output')
 
 
 def generate_launch_description():
@@ -58,7 +63,7 @@ def generate_launch_description():
                               description='FAST-LIO2: map while carrying the rig'),
         DeclareLaunchArgument('accumulate', default_value='false',
                               description='true: start recording a map at launch'),
-        DeclareLaunchArgument('output_dir', default_value=os.path.join(os.getcwd(), 'output')),
+        DeclareLaunchArgument('output_dir', default_value=DEFAULT_OUTPUT),
         DeclareLaunchArgument('color_profile', default_value='1920x1080x15'),
         DeclareLaunchArgument('web', default_value='true'),
         DeclareLaunchArgument('port', default_value='8080'),
