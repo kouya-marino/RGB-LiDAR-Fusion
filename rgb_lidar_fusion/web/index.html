@@ -61,6 +61,21 @@
         <p class="msg" id="rec-msg" role="status"></p>
       </section>
 
+      <section class="card" id="robots-card">
+        <div class="card-head">
+          <h2>Robot exports</h2>
+          <span class="sub small-note" id="robots-lock"></span>
+        </div>
+        <p class="hint small">Every saved map is also written for these robots, with the origin at their lidar (height above the floor).</p>
+        <div class="robots" id="robots" role="table" aria-label="Robot exports"></div>
+        <button class="btn ghost small" id="robot-add" type="button">+ Add robot</button>
+        <div class="row">
+          <button class="btn primary" id="robots-save" type="button" disabled>Save robots</button>
+          <button class="btn ghost" id="robots-discard" type="button" disabled>Discard</button>
+        </div>
+        <p class="msg" id="robots-msg" role="status"></p>
+      </section>
+
       <section class="card">
         <h2>Layers</h2>
         <label class="check"><input type="checkbox" id="show-colored" checked><span class="swatch rgb"></span>Colored points</label>
@@ -133,6 +148,17 @@
       <div class="row">
         <button class="btn ghost" value="cancel" formnovalidate>Cancel</button>
         <button class="btn danger-solid" value="ok" id="ow-ok" disabled>Overwrite</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dlg" aria-labelledby="cf-title">
+    <form method="dialog" class="dlg">
+      <h2 id="cf-title"></h2>
+      <p id="cf-body"></p>
+      <div class="row">
+        <button class="btn ghost" value="cancel" formnovalidate>Cancel</button>
+        <button class="btn primary" value="ok" id="cf-ok">OK</button>
       </div>
     </form>
   </dialog>

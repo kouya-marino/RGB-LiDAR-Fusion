@@ -52,6 +52,7 @@ from geometry_msgs.msg import TransformStamped
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.parameter import Parameter
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
 from sensor_msgs.msg import CameraInfo, Image, Imu, PointCloud2
@@ -63,8 +64,9 @@ from rgb_lidar_fusion.extrinsics import invert, matrix_to_quat
 from rgb_lidar_fusion.fusion import Accumulator, VoxelGrid, view_quality
 from rgb_lidar_fusion.io_cloud import write_both, write_pcd_xyzi, write_ply_xyzi
 from rgb_lidar_fusion.mapframe import (apply, gravity_up, level_frame, path_length,
-                                       robot_frame, rotation_angle, thin_path)
+                                       rotation_angle, thin_path)
 from rgb_lidar_fusion.projection import CameraModel, occlusion_mask, project
+from rgb_lidar_fusion import robots as robot_list
 from rgb_lidar_fusion.ros_conv import (
     image_to_rgb,
     pointcloud2_field,
@@ -137,6 +139,7 @@ class ColorizerNode(Node):
         p('export_names', ['go2', 'g1'])
         p('export_heights', [0.45, 1.25])
         p('export_flip', [False, False])
+        p('exports_json', '')            # set by the UI: replaces the robot list
 
         g = lambda name: self.get_parameter(name).value  # noqa: E731
         self.camera_frame = str(g('camera_frame'))
@@ -163,8 +166,16 @@ class ColorizerNode(Node):
             list(g('export_flip'))
         if not (len(names) == len(heights) == len(flips)):
             raise ValueError('export_names, export_heights and export_flip differ in length')
-        self.exports = [dict(name=str(n), height=float(h), flip=bool(f))
-                        for n, h, f in zip(names, heights, flips) if valid_map_name(str(n))]
+        self.exports, err = robot_list.validate(
+            [dict(name=n, height=h, flip=f) for n, h, f in zip(names, heights, flips)])
+        if self.exports is None:
+            raise ValueError('export_* parameters: {}'.format(err))
+        # the list edited in the UI (output/robots.json) wins over the config
+        saved = robot_list.load(self.output_dir)
+        self.exports_source = 'config'
+        if saved is not None:
+            self.exports, self.exports_source = saved, robot_list.FILENAME
+        self.add_on_set_parameters_callback(self._on_set_parameters)
 
         self.cam: Optional[CameraModel] = None
         self._images = deque(maxlen=int(g('max_buffered_images')))
@@ -326,16 +337,10 @@ class ColorizerNode(Node):
         xyz_c, rgb = self.acc.export()
         xyz_f, inten = self.full.export()
 
-        def write_set(where, T):
-            os.makedirs(where, exist_ok=True)
-            write_both(os.path.join(where, 'colored'), apply(T, xyz_c), rgb)
-            pts = apply(T, xyz_f)
-            write_pcd_xyzi(os.path.join(where, 'full.pcd'), pts, inten)
-            write_ply_xyzi(os.path.join(where, 'full.ply'), pts, inten)
-
-        write_set(folder, np.eye(4))
-        for e in self.exports:
-            write_set(os.path.join(folder, e['name']), robot_frame(e['height'], e['flip']))
+        write_both(os.path.join(folder, 'colored'), xyz_c, rgb)
+        write_pcd_xyzi(os.path.join(folder, 'full.pcd'), xyz_f, inten)
+        write_ply_xyzi(os.path.join(folder, 'full.ply'), xyz_f, inten)
+        robot_list.write_exports(folder, xyz_c, rgb, xyz_f, inten, self.exports)
         with open(os.path.join(folder, 'trajectory.csv'), 'w') as fh:
             fh.write('t,x,y,z\n')
             for row in self.path:
@@ -351,8 +356,7 @@ class ColorizerNode(Node):
             full_points=int(xyz_f.shape[0]), voxel_m=self.voxel,
             lidar_height_m=self.rec_height, path_length_m=round(length, 2),
             frame='map: gravity-levelled, floor z=0, origin below the start lidar, +X forward',
-            exports=[dict(e, frame='lidar at {:.2f} m{}'.format(
-                e['height'], ', upside down' if e['flip'] else '')) for e in self.exports])
+            exports=robot_list.describe(self.exports))
         with open(os.path.join(folder, 'info.json'), 'w') as fh:
             json.dump(info, fh, indent=2)
         if os.path.exists(final):
@@ -379,6 +383,30 @@ class ColorizerNode(Node):
             # a cancelled overwrite leaves the old map untouched
             shutil.rmtree(os.path.join(self.output_dir, name), ignore_errors=True)
         return True, msg
+
+    def _on_set_parameters(self, params):
+        """`exports_json` replaces the robot export list (from the UI), checked and
+        saved to output/robots.json. Every other parameter is accepted as is."""
+        for prm in params:
+            if prm.name != 'exports_json' or not prm.value:
+                continue
+            if self.recording:
+                return SetParametersResult(successful=False,
+                                           reason='stop the recording before editing robots')
+            try:
+                robots, err = robot_list.validate(json.loads(prm.value))
+            except ValueError as exc:
+                robots, err = None, 'not JSON: {}'.format(exc)
+            if robots is None:
+                return SetParametersResult(successful=False, reason=err)
+            try:
+                robot_list.save(self.output_dir, robots)
+            except OSError as exc:
+                return SetParametersResult(successful=False, reason='cannot save: {}'.format(exc))
+            self.exports, self.exports_source = robots, robot_list.FILENAME
+            self.get_logger().info('robot exports: {}'.format(', '.join(
+                '{}@{:.3f}m'.format(r['name'], r['height']) for r in robots) or 'none'))
+        return SetParametersResult(successful=True)
 
     def _srv_start(self, request, response):
         name = str(self.get_parameter('map_name').value) or \
@@ -607,7 +635,8 @@ class ColorizerNode(Node):
             default_lidar_height=self.default_height,
             rec_height=self.rec_height if self.recording else None,
             pose=self._pose(), path=[[round(float(x), 3), round(float(y), 3)] for x, y, _ in path],
-            exports=self.exports, last_saved=self.last_saved, output_dir=self.output_dir)
+            exports=self.exports, exports_source=self.exports_source,
+            last_saved=self.last_saved, output_dir=self.output_dir)
 
     def _publish_status(self):
         self.status_pub.publish(String(data=json.dumps(self.status())))

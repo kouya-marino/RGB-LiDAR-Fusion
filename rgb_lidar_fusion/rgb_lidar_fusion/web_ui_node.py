@@ -18,6 +18,10 @@ Serves one static page (Three.js, vendored) plus a small JSON/binary API:
   POST /api/maps/<name>/delete {"confirm": "<name>"}
                                        delete a saved map's folder (not while
                                        it is being recorded)
+  POST /api/robots {"robots": [{"name", "height" (m), "flip"}]}
+                                       replace the robot export list
+  POST /api/maps/<name>/reexport       rewrite a saved map's robot folders from
+                                       the current list
   POST /api/stop                       stop and save
   POST /api/cancel                     stop and discard
 
@@ -47,6 +51,7 @@ from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
+from rgb_lidar_fusion import robots as robot_list
 from rgb_lidar_fusion.colorizer_node import valid_map_name
 from rgb_lidar_fusion.io_cloud import encode_xyzi, encode_xyzrgb, read_pcd, unpack_rgb
 from rgb_lidar_fusion.ros_conv import pointcloud2_field, pointcloud2_to_array, pointcloud2_to_xyz
@@ -221,6 +226,63 @@ class WebUiNode(Node):
                     maps.append(info)
         return sorted(maps, key=lambda m: m.get('started', ''), reverse=True)
 
+    def set_robots(self, robots):
+        clean, err = robot_list.validate(robots)
+        if clean is None:
+            return False, err
+        req = SetParameters.Request(parameters=[Parameter(
+            name='exports_json', value=ParameterValue(type=ParameterType.PARAMETER_STRING,
+                                                      string_value=json.dumps(clean)))])
+        ok, res = self._call(self.param_cli, req)
+        if not ok:
+            return False, res
+        bad = [r.reason for r in res.results if not r.successful]
+        if bad:
+            return False, '; '.join(bad)
+        return True, 'saved {} robot{}'.format(len(clean), '' if len(clean) == 1 else 's')
+
+    def _fresh_status(self, timeout: float = 2.0):
+        """A status published after this call, or None (the cached one can be
+        up to 0.5 s old and miss a change that has just happened)."""
+        asked = self.get_clock().now().nanoseconds * 1e-9
+        deadline = time.monotonic() + timeout
+        while self._status_t <= asked and time.monotonic() < deadline:
+            time.sleep(0.05)
+        return self.status() if self._status_t > asked else None
+
+    def reexport(self, name: str):
+        if not valid_map_name(name):
+            return False, 'invalid map name'
+        st = self._fresh_status()
+        if st is None:
+            return False, 'the colorizer is not answering; try again'
+        if st.get('recording') and st.get('map_name') == name:
+            return False, 'this map is being recorded; stop it first'
+        root = os.path.realpath(self.output_dir)
+        folder = os.path.realpath(os.path.join(root, name))
+        info_path = os.path.join(folder, 'info.json')
+        if os.path.dirname(folder) != root or not os.path.isfile(info_path):
+            return False, 'no saved map named {!r}'.format(name)
+        try:
+            with open(info_path) as fh:
+                info = json.load(fh)
+            col = read_pcd(os.path.join(folder, 'colored.pcd'))
+            full = read_pcd(os.path.join(folder, 'full.pcd'))
+        except (OSError, ValueError) as exc:
+            return False, 'cannot read the map: {}'.format(exc)
+        robots = st.get('exports') or []
+        old = [e.get('name') for e in info.get('exports', [])]
+        robot_list.write_exports(
+            folder, np.stack([col['x'], col['y'], col['z']], 1), unpack_rgb(col['rgb']),
+            np.stack([full['x'], full['y'], full['z']], 1), full['intensity'], robots,
+            remove=old)
+        info['exports'] = robot_list.describe(robots)
+        with open(info_path, 'w') as fh:
+            json.dump(info, fh, indent=2)
+        self._saved_cache = {}
+        return True, 're-exported {!r} for {}'.format(
+            name, ', '.join(r['name'] for r in robots) or 'no robots')
+
     def delete_map(self, name: str, confirm: str):
         if not valid_map_name(name):
             return False, 'invalid map name'
@@ -228,13 +290,9 @@ class WebUiNode(Node):
             return False, 'type the map name exactly to delete it'
         # decide on a status newer than this request: the cached one can be up
         # to 0.5 s old and miss a recording that has just started
-        asked = self.get_clock().now().nanoseconds * 1e-9
-        deadline = time.monotonic() + 2.0
-        while self._status_t <= asked and time.monotonic() < deadline:
-            time.sleep(0.05)
-        if self._status_t <= asked:
+        st = self._fresh_status()
+        if st is None:
             return False, 'the colorizer is not answering; try again'
-        st = self.status()
         if st.get('recording') and st.get('map_name') == name:
             return False, 'this map is being recorded; stop or cancel first'
         root = os.path.realpath(self.output_dir)
@@ -351,6 +409,11 @@ class _Handler(BaseHTTPRequestHandler):
         elif path.startswith('/api/maps/') and path.endswith('/delete') and \
                 len(path.split('/')) == 5:
             ok, msg = n.delete_map(path.split('/')[3], str(body.get('confirm', '')))
+        elif path.startswith('/api/maps/') and path.endswith('/reexport') and \
+                len(path.split('/')) == 5:
+            ok, msg = n.reexport(path.split('/')[3])
+        elif path == '/api/robots':
+            ok, msg = n.set_robots(body.get('robots'))
         else:
             return self._json({'ok': False, 'message': 'not found'}, HTTPStatus.NOT_FOUND)
         self._json({'ok': ok, 'message': msg}, HTTPStatus.OK if ok else HTTPStatus.CONFLICT)

@@ -319,6 +319,7 @@ function renderStatus() {
   $('rd-odom').classList.toggle('ok', !!s.odometry_ok);
   $('rd-cam').classList.toggle('ok', !!s.camera_ok);
   $('rd-still').classList.toggle('ok', !!s.still);
+  syncRobots(s);
   const ex = s.exports || [];
   $('exports-note').textContent = ex.length
     ? 'On save, also writes ' + ex.map((e) => `${e.name} (lidar ${Math.round(e.height * 100)} cm${e.flip ? ', upside down' : ''})`).join(' and ') + '.'
@@ -500,6 +501,144 @@ function askOverwrite(map, cm) {
   return p;
 }
 
+// ---- robot exports -------------------------------------------------------
+state.robots = [];          // the list being edited (heights in cm)
+state.robotsDirty = false;
+state.robotsServer = '';
+
+function syncRobots(s) {
+  const locked = !!s.recording || !s.connected;
+  $('robots-lock').textContent = s.recording ? 'locked while recording' : '';
+  for (const el of $('robots-card').querySelectorAll('input, button')) {
+    el.disabled = locked || (el.id === 'robots-save' || el.id === 'robots-discard'
+      ? !state.robotsDirty : false);
+  }
+  const server = JSON.stringify(s.exports || []);
+  if (!state.robotsDirty && server !== state.robotsServer) {
+    state.robotsServer = server;
+    state.robots = (s.exports || []).map((r) => ({
+      name: r.name, cm: Math.round(r.height * 1000) / 10, flip: !!r.flip }));
+    renderRobots();
+  }
+}
+
+function setRobotsDirty(d) {
+  state.robotsDirty = d;
+  $('robots-save').disabled = !d;
+  $('robots-discard').disabled = !d;
+}
+
+function renderRobots() {
+  const box = $('robots');
+  box.replaceChildren();
+  if (state.robots.length) {
+    const head = document.createElement('div');
+    head.className = 'robot-row robot-head';
+    head.innerHTML = '<span>Robot</span><span>Lidar cm</span><span>Inverted</span><span></span>';
+    box.append(head);
+  } else {
+    const p = document.createElement('p');
+    p.className = 'hint small';
+    p.textContent = 'No robots: maps are saved without robot copies.';
+    box.append(p);
+  }
+  state.robots.forEach((r, i) => {
+    const row = document.createElement('div');
+    row.className = 'robot-row';
+    const name = document.createElement('input');
+    name.type = 'text';
+    name.value = r.name;
+    name.maxLength = 32;
+    name.setAttribute('aria-label', 'Robot name');
+    name.addEventListener('input', () => { r.name = name.value.trim(); setRobotsDirty(true); });
+    const h = document.createElement('input');
+    h.type = 'number';
+    h.min = '5'; h.max = '500'; h.step = '0.1';
+    h.value = r.cm;
+    h.setAttribute('aria-label', `${r.name || 'robot'} lidar height in cm`);
+    h.addEventListener('input', () => { r.cm = Number(h.value); setRobotsDirty(true); });
+    const flip = document.createElement('label');
+    flip.className = 'flip';
+    flip.title = 'Tick only if this robot\'s driver reports its lidar upside down ' +
+      '(a Livox driver set to roll 180, like the G1\'s, already reports it upright)';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = r.flip;
+    cb.addEventListener('change', () => { r.flip = cb.checked; setRobotsDirty(true); });
+    cb.setAttribute('aria-label', `${r.name || 'robot'} lidar is reported upside down`);
+    flip.append(cb, document.createTextNode('flip'));
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'btn ghost small x';
+    x.textContent = '✕';
+    x.title = `Remove ${r.name || 'this robot'}`;
+    x.addEventListener('click', () => { state.robots.splice(i, 1); setRobotsDirty(true); renderRobots(); });
+    row.append(name, h, flip, x);
+    box.append(row);
+  });
+}
+
+function robotsMsg(text, kind = '') {
+  const el = $('robots-msg');
+  el.textContent = text;
+  el.className = `msg ${kind}`;
+}
+
+$('robot-add').addEventListener('click', () => {
+  state.robots.push({ name: '', cm: 50, flip: false });
+  setRobotsDirty(true);
+  renderRobots();
+  const inputs = $('robots').querySelectorAll('input[type="text"]');
+  inputs[inputs.length - 1].focus();
+});
+$('robots-discard').addEventListener('click', () => {
+  setRobotsDirty(false);
+  state.robotsServer = '';           // reload from the next status
+  robotsMsg('');
+  if (state.status) syncRobots(state.status);
+});
+$('robots-save').addEventListener('click', async () => {
+  const robots = state.robots.map((r) => ({ name: r.name, height: Math.round(r.cm * 10) / 1000,
+                                            flip: r.flip }));
+  const r = await post('/api/robots', { robots });
+  robotsMsg(r.message, r.ok ? 'ok' : 'error');
+  if (r.ok) {
+    setRobotsDirty(false);
+    state.robotsServer = '';
+  }
+});
+
+function confirmAction(title, body, okLabel) {
+  $('cf-title').textContent = title;
+  $('cf-body').textContent = body;
+  $('cf-ok').textContent = okLabel;
+  const p = showDialog($('confirm-dlg'), () => true);
+  $('cf-ok').focus();
+  return p;
+}
+
+async function reexportMap(map) {
+  const robots = (state.status && state.status.exports) || [];
+  const now = robots.map((r) => `${r.name} (${Math.round(r.height * 1000) / 10} cm)`).join(', ');
+  const gone = (map.exports || []).map((e) => e.name).filter((n) => !robots.some((r) => r.name === n));
+  const body = robots.length
+    ? `Rewrite the robot copies of ${map.name} for: ${now}.` : `${map.name} will have no robot copies.`;
+  const ok = await confirmAction('Re-export robots?',
+    body + (gone.length ? ` Copies for ${gone.join(', ')} are removed.` : '') +
+    ' The map itself is not changed.', 'Re-export');
+  if (!ok) return;
+  flash(`Re-exporting ${map.name}…`, '');
+  let r;
+  try {
+    const res = await fetch(`/api/maps/${encodeURIComponent(map.name)}/reexport`, { method: 'POST' });
+    r = await res.json();
+  } catch (e) {
+    r = { ok: false, message: e.message };
+  }
+  flash(r.message, r.ok ? 'ok' : 'error');
+  if (r.ok) await loadMaps();
+}
+
 async function deleteMap(map) {
   const input = $('dl-input');
   $('dl-name').textContent = map.name;
@@ -594,9 +733,14 @@ function renderMaps(maps) {
     del.className = 'btn small ghost danger';
     del.textContent = 'Delete…';
     del.addEventListener('click', () => deleteMap(m));
+    const rex = document.createElement('button');
+    rex.className = 'btn small ghost';
+    rex.textContent = 'Re-export robots';
+    rex.title = 'Rewrite this map\'s robot copies from the current robot list';
+    rex.addEventListener('click', () => reexportMap(m));
     const actions = document.createElement('div');
     actions.className = 'row';
-    actions.append(view, del);
+    actions.append(view, rex, del);
 
     const files = document.createElement('div');
     files.className = 'map-files';
