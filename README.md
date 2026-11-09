@@ -52,7 +52,7 @@ Everything runs in a ROS 2 Humble Docker container. The host needs only Docker, 
 docker/build.sh
 ```
 
-This builds `rgb-lidar-fusion:humble` with ROS 2 Humble desktop, the RealSense ROS 2 driver, [Livox-SDK2](https://github.com/Livox-SDK/Livox-SDK2) v1.3.1, [livox_ros_driver2](https://github.com/Livox-SDK/livox_ros_driver2) 1.2.6, PCL and cv_bridge. The container user gets your host UID/GID, so files it writes into the repo stay yours.
+This builds `rgb-lidar-fusion:humble` with ROS 2 Humble desktop, the RealSense ROS 2 driver, PCL, cv_bridge, and Livox-SDK2 v1.3.1 + livox_ros_driver2 1.2.6. The Livox code is built from the copies in [`third_party/`](third_party/), so it is never fetched from GitHub at build time. The container user gets your host UID/GID, so files it writes into the repo stay yours.
 
 ### 2. Network for the LiDAR
 

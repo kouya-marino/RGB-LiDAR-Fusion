@@ -1,0 +1,4 @@
+# Send Docker only what the image needs; everything else stays out of the context.
+*
+!docker/entrypoint.sh
+!third_party/livox/

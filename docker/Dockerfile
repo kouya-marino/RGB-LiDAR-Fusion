@@ -1,12 +1,11 @@
 # ROS 2 Humble dev environment for RGB-LiDAR-Fusion.
 # Toolchain only: the repo is bind-mounted at /ws/src/rgb_lidar_fusion by docker/run.sh.
+# Build context is the repo root (see docker/build.sh and .dockerignore).
 FROM osrf/ros:humble-desktop
 
 ARG USERNAME=dev
 ARG USER_UID=1000
 ARG USER_GID=1000
-ARG LIVOX_SDK2_REF=v1.3.1
-ARG LIVOX_DRIVER_REF=1.2.6
 
 ENV DEBIAN_FRONTEND=noninteractive
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -29,18 +28,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         iproute2 iputils-ping tcpdump usbutils \
     && rm -rf /var/lib/apt/lists/*
 
-# Livox-SDK2 (no apt package)
-RUN git clone https://github.com/Livox-SDK/Livox-SDK2.git /tmp/Livox-SDK2 \
-    && cd /tmp/Livox-SDK2 && git checkout "${LIVOX_SDK2_REF}" \
+# Livox-SDK2 v1.3.1, vendored in third_party/livox (no network fetch)
+COPY third_party/livox/Livox-SDK2 /tmp/Livox-SDK2
+RUN cd /tmp/Livox-SDK2 \
     && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
     && cmake --build build -j"$(nproc)" \
     && cmake --install build \
     && ldconfig && rm -rf /tmp/Livox-SDK2
 
-# livox_ros_driver2 as an underlay workspace (equivalent of its `./build.sh humble`)
-RUN mkdir -p /opt/livox_ws/src \
-    && git clone https://github.com/Livox-SDK/livox_ros_driver2.git /opt/livox_ws/src/livox_ros_driver2 \
-    && cd /opt/livox_ws/src/livox_ros_driver2 && git checkout "${LIVOX_DRIVER_REF}" \
+# livox_ros_driver2 1.2.6, vendored, as an underlay workspace
+# (equivalent of its `./build.sh humble`)
+COPY third_party/livox/livox_ros_driver2 /opt/livox_ws/src/livox_ros_driver2
+RUN cd /opt/livox_ws/src/livox_ros_driver2 \
     && cp package_ROS2.xml package.xml \
     && cp -r launch_ROS2 launch \
     && source /opt/ros/humble/setup.bash \
@@ -56,7 +55,7 @@ RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && mkdir -p /ws/src /ws/build /ws/install /ws/log \
     && chown -R "${USER_UID}:${USER_GID}" /ws
 
-COPY entrypoint.sh /entrypoint.sh
+COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh \
     && echo 'source /entrypoint.sh' >> "/home/${USERNAME}/.bashrc"
 
