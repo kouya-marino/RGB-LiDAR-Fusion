@@ -109,9 +109,9 @@ This starts the sensors, the colorizer and the web UI. Open **http://localhost:8
 | | |
 |---|---|
 | **Live preview** | Before recording: the latest colored scan over the latest full scan, levelled, with the rig's position and heading. |
-| **Record a map** | Name it, enter the **lidar height above the floor** (cm, to the centre of the dome; default 71.5, set in `colorizer.yaml`; changing it asks for confirmation), wait for *Odometry · Camera · Held still* to turn green, press *Start recording* while holding the rig still, then walk slowly. *Stop & save* (or *Cancel* to discard). The maps and the path walked grow live in 3D; the header shows the lidar's live height above the floor (and its lowest–highest range), the distance walked and the time, and a warning appears while you turn faster than 30°/s (those scans are not colored). The height may change freely while you walk: it is only fixed at Start. |
+| **Record a map** | Name it (required; a name that already exists asks you to type **OVERWRITE**, and the old map is only replaced once the new one is saved), enter the **lidar height above the floor** (cm, to the centre of the dome; default 71.5, set in `colorizer.yaml`; changing it asks for confirmation), wait for *Odometry · Camera · Held still* to turn green, press *Start recording* and confirm while holding the rig still, then walk slowly. *Stop & save* (or *Cancel* to discard). The maps and the path walked grow live in 3D; the header shows the lidar's live height above the floor (and its lowest–highest range), the distance walked and the time, and a warning appears while you turn faster than 30°/s (those scans are not colored). The height may change freely while you walk: it is only fixed at Start. |
 | **Layers** | Colored points, full lidar and path on/off; color the full lidar by height, intensity or gray; point size; fit view. |
-| **Saved maps** | View any saved map in 3D, or download its files: the map itself and each robot export. `?map=<name>` links straight to one. |
+| **Saved maps** | Collapsed list with a search box; click a map for its details, *View in 3D* and downloads (the map itself and each robot export). `?map=<name>` links straight to one. |
 
 Each map is saved in its own folder:
 

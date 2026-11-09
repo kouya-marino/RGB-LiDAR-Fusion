@@ -51,6 +51,7 @@ import rclpy
 from geometry_msgs.msg import TransformStamped
 from rclpy.duration import Duration
 from rclpy.node import Node
+from rclpy.parameter import Parameter
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
 from sensor_msgs.msg import CameraInfo, Image, Imu, PointCloud2
@@ -126,6 +127,7 @@ class ColorizerNode(Node):
         p('level_window', 1.0)           # s of IMU averaged for gravity
         p('accumulate', False)           # start recording `map_name` at launch
         p('map_name', '')
+        p('overwrite_existing', False)   # one-shot: next ~/start_map may replace a map
         p('voxel', 0.03)                 # m, saved maps
         p('display_voxel', 0.10)         # m, live full map sent to viewers
         p('publish_period', 1.0)         # s, colored_map
@@ -183,6 +185,7 @@ class ColorizerNode(Node):
         self.rec_scans = 0
         self.rec_height = None
         self.rec_T = None                    # frozen T_map_world
+        self.rec_replaces = False            # recording will replace an existing map
         self.path = []                       # (t, x, y, z) of the lidar in the map frame
         self.last_saved: Optional[str] = None
         self.acc = Accumulator(voxel=self.voxel)
@@ -268,7 +271,7 @@ class ColorizerNode(Node):
             return None, 'no odometry (TF {} -> {})'.format(self._world, self.lidar_frame)
         acc, gyro = self._imu_window()
         if acc is None or len(acc) < 20:
-            return None, 'no IMU data'
+            return None, 'no IMU data yet (just started or busy saving); try again in a second'
         R = T_world_lidar[:3, :3]
         T = level_frame(up=R @ gravity_up(acc), forward_hint=R[:, 0],
                         origin=T_world_lidar[:3, 3], height=height)
@@ -280,12 +283,13 @@ class ColorizerNode(Node):
 
     # --- recording ------------------------------------------------------
 
-    def start_map(self, name: str):
+    def start_map(self, name: str, overwrite: bool = False):
         if self.recording:
             return False, 'already recording {!r}'.format(self.map_name)
         if not valid_map_name(name):
             return False, 'invalid map name {!r}: use 1-64 of A-Z a-z 0-9 _ -'.format(name)
-        if os.path.exists(os.path.join(self.output_dir, name)):
+        exists = os.path.exists(os.path.join(self.output_dir, name))
+        if exists and not overwrite:
             return False, 'a map named {!r} already exists'.format(name)
         height = float(self.get_parameter('lidar_height').value)
         if not 0.05 <= height <= 5.0:
@@ -302,15 +306,23 @@ class ColorizerNode(Node):
         self.full = VoxelGrid(voxel=self.voxel)
         self.full_display = VoxelGrid(voxel=self.display_voxel)
         self.recording, self.map_name, self.rec_T, self.rec_height = True, name, T, height
+        self.rec_replaces = exists       # the old map stays until this one is saved
         self.rec_started, self.rec_scans, self.path = time.time(), 0, []
         self._counts = (0, 0)
         self._too_fast_at_start = self.stats['too_fast']
-        return True, 'recording {!r} (lidar at {:.2f} m)'.format(name, height)
+        return True, 'recording {!r} (lidar at {:.3f} m){}'.format(
+            name, height, ', will replace the existing map when saved' if exists else '')
 
     def save_map(self) -> str:
-        """Write the map (map frame), each robot export, trajectory and info."""
-        folder = os.path.join(self.output_dir, self.map_name)
-        os.makedirs(folder, exist_ok=True)
+        """Write the map (map frame), each robot export, trajectory and info.
+
+        Everything is written to a hidden temporary folder first and swapped in
+        at the end, so an existing map is only replaced by a complete new one
+        (a failed save leaves the old map as it was)."""
+        final = os.path.join(self.output_dir, self.map_name)
+        folder = os.path.join(self.output_dir, '.{}.saving'.format(self.map_name))
+        shutil.rmtree(folder, ignore_errors=True)
+        os.makedirs(folder)
         xyz_c, rgb = self.acc.export()
         xyz_f, inten = self.full.export()
 
@@ -343,6 +355,10 @@ class ColorizerNode(Node):
                 e['height'], ', upside down' if e['flip'] else '')) for e in self.exports])
         with open(os.path.join(folder, 'info.json'), 'w') as fh:
             json.dump(info, fh, indent=2)
+        if os.path.exists(final):
+            shutil.rmtree(final)
+        os.rename(folder, final)
+        folder = final
         self.last_saved = self.map_name
         self.get_logger().info(
             'saved map {!r}: {} colored + {} full points, {} m walked, exports: {}'.format(
@@ -358,14 +374,19 @@ class ColorizerNode(Node):
             msg = 'saved {}'.format(self.save_map()) if save else 'cancelled {!r}'.format(name)
         finally:
             self.recording = False
-        if not save:
+        if not save and not self.rec_replaces:
+            # a cancelled NEW map leaves nothing behind (e.g. from ~/save_cloud);
+            # a cancelled overwrite leaves the old map untouched
             shutil.rmtree(os.path.join(self.output_dir, name), ignore_errors=True)
         return True, msg
 
     def _srv_start(self, request, response):
         name = str(self.get_parameter('map_name').value) or \
             datetime.now().strftime('map_%Y%m%d_%H%M%S')
-        response.success, response.message = self.start_map(name)
+        overwrite = bool(self.get_parameter('overwrite_existing').value)
+        if overwrite:                                   # one-shot
+            self.set_parameters([Parameter('overwrite_existing', Parameter.Type.BOOL, False)])
+        response.success, response.message = self.start_map(name, overwrite)
         return response
 
     def _srv_stop(self, request, response):

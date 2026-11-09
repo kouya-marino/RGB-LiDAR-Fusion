@@ -12,8 +12,9 @@ Serves one static page (Three.js, vendored) plus a small JSON/binary API:
   GET  /api/maps/<name>/files/[<robot>/]<file>
                                        download colored|full .pcd|.ply (map frame
                                        or a robot export), info.json, trajectory.csv
-  POST /api/start  {"name": "...", "lidar_height": 0.715}
-                                       start recording a map
+  POST /api/start  {"name": "...", "lidar_height": 0.715, "overwrite": false}
+                                       start recording a map (overwrite: replace
+                                       an existing map of that name when saved)
   POST /api/stop                       stop and save
   POST /api/cancel                     stop and discard
 
@@ -168,7 +169,7 @@ class WebUiNode(Node):
             return False, 'colorizer did not answer'
         return True, future.result()
 
-    def start(self, name: str, lidar_height: float):
+    def start(self, name: str, lidar_height: float, overwrite: bool = False):
         if not valid_map_name(name):
             return False, 'name must be 1-64 of A-Z a-z 0-9 _ -'
         if not 0.05 <= lidar_height <= 5.0:
@@ -177,7 +178,9 @@ class WebUiNode(Node):
             Parameter(name='map_name', value=ParameterValue(
                 type=ParameterType.PARAMETER_STRING, string_value=name)),
             Parameter(name='lidar_height', value=ParameterValue(
-                type=ParameterType.PARAMETER_DOUBLE, double_value=float(lidar_height)))])
+                type=ParameterType.PARAMETER_DOUBLE, double_value=float(lidar_height))),
+            Parameter(name='overwrite_existing', value=ParameterValue(
+                type=ParameterType.PARAMETER_BOOL, bool_value=bool(overwrite)))])
         ok, res = self._call(self.param_cli, req)
         if not ok:
             return False, res
@@ -311,7 +314,8 @@ class _Handler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 return self._json({'ok': False, 'message': 'lidar_height must be a number'},
                                   HTTPStatus.BAD_REQUEST)
-            ok, msg = n.start(str(body.get('name', '')).strip(), height)
+            ok, msg = n.start(str(body.get('name', '')).strip(), height,
+                              body.get('overwrite') is True)
         elif path in ('/api/stop', '/api/cancel'):
             ok, msg = n.trigger(path.rsplit('/', 1)[1])
         else:

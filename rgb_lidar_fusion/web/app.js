@@ -369,11 +369,6 @@ function flash(text, kind = '') {
 }
 
 // ---- recording controls --------------------------------------------------
-function defaultName() {
-  const d = new Date(), p = (n) => String(n).padStart(2, '0');
-  return `map_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
-}
-
 async function post(path, body) {
   state.busy = true;
   renderStatus();
@@ -392,7 +387,12 @@ async function post(path, body) {
 
 $('btn-start').addEventListener('click', async () => {
   const input = $('map-name');
-  const name = input.value.trim() || defaultName();
+  const name = input.value.trim();
+  if (!name) {
+    flash('Name the map first.', 'error');
+    input.focus();
+    return;
+  }
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(name)) {
     flash('Use 1–64 letters, digits, _ or -', 'error');
     input.focus();
@@ -407,7 +407,24 @@ $('btn-start').addEventListener('click', async () => {
     return;
   }
   try { localStorage.setItem('lidarHeightCm', String(cm)); } catch { /* private mode */ }
-  const r = await post('/api/start', { name, lidar_height: cm / 100 });
+
+  // the name must not collide with a saved map, unless the user types OVERWRITE
+  await loadMaps();
+  let overwrite = false;
+  const existing = lastMaps.find((m) => m.name === name);
+  if (existing) {                     // the OVERWRITE dialog is the confirmation
+    overwrite = await askOverwrite(existing, cm);
+    if (!overwrite) { flash('Not started: choose another name.', ''); return; }
+  } else if (!await confirmStart(name, cm)) {
+    return;
+  }
+  let r = await post('/api/start', { name, lidar_height: cm / 100, overwrite });
+  if (!r.ok && !overwrite && /already exists/.test(r.message || '')) {   // saved meanwhile
+    await loadMaps();
+    overwrite = await askOverwrite(lastMaps.find((m) => m.name === name) || { name }, cm);
+    if (!overwrite) { flash('Not started: choose another name.', ''); return; }
+    r = await post('/api/start', { name, lidar_height: cm / 100, overwrite });
+  }
   flash(r.message, r.ok ? 'ok' : 'error');
   if (r.ok) {
     input.value = '';
@@ -445,6 +462,43 @@ $('point-size').addEventListener('input', (e) => {
 $('btn-fit').addEventListener('click', () => fitView(true));
 $('btn-live').addEventListener('click', goLive);
 
+// ---- confirmations --------------------------------------------------------
+function showDialog(dlg, isOk) {
+  return new Promise((resolve) => {
+    dlg.addEventListener('close', () => resolve(dlg.returnValue === 'ok' && isOk()), { once: true });
+    dlg.returnValue = '';
+    dlg.showModal();
+  });
+}
+
+function confirmStart(name, cm) {
+  $('sd-name').textContent = name;
+  $('sd-height').textContent = `${cm} cm` + (cm === state.defaultCm ? ' (default)' : '');
+  const ex = (state.status && state.status.exports) || [];
+  $('sd-exports').textContent = ex.length
+    ? ex.map((e) => `${e.name} (${Math.round(e.height * 100)} cm)`).join(', ') : 'none';
+  const p = showDialog($('start-dlg'), () => true);
+  $('sd-ok').focus();
+  return p;
+}
+
+function askOverwrite(map, cm) {
+  const dlg = $('overwrite-dlg');
+  const input = $('ow-input');
+  $('ow-name').textContent = map.name;
+  $('ow-height').textContent = `${cm} cm`;
+  const when = map.started ? new Date(map.started).toLocaleString([], {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  $('ow-info').textContent = when ? ` (saved ${when}${map.full_points != null
+    ? `, ${fmtInt(map.full_points)} points` : ''})` : '';
+  input.value = '';
+  $('ow-ok').disabled = true;
+  input.oninput = () => { $('ow-ok').disabled = input.value.trim() !== 'OVERWRITE'; };
+  const p = showDialog(dlg, () => input.value.trim() === 'OVERWRITE');
+  input.focus();
+  return p;
+}
+
 // ---- saved maps -----------------------------------------------------------
 let lastMaps = [];
 
@@ -455,40 +509,60 @@ async function loadMaps() {
   renderMaps(lastMaps);
 }
 
+const openMaps = new Set();          // names whose details are expanded
+
 function renderMaps(maps) {
   const ul = $('maps');
+  const q = $('map-search').value.trim().toLowerCase();
+  const shown = q ? maps.filter((m) => m.name.toLowerCase().includes(q)) : maps;
+  $('maps-count').textContent = maps.length
+    ? (q ? `(${shown.length} of ${maps.length})` : `(${maps.length})`) : '';
   ul.replaceChildren();
-  if (!maps.length) {
+  if (!shown.length) {
     const li = document.createElement('li');
     li.className = 'empty';
-    li.textContent = 'No saved maps yet.';
+    li.textContent = maps.length ? `No map matches "${q}".` : 'No saved maps yet.';
     ul.append(li);
     return;
   }
-  for (const m of maps) {
+  for (const m of shown) {
+    const viewing = state.savedName === m.name;
     const li = document.createElement('li');
-    li.className = 'map-item' + (state.savedName === m.name ? ' active' : '');
+    li.className = 'map-item' + (openMaps.has(m.name) ? ' open' : '') + (viewing ? ' viewing' : '');
 
-    const top = document.createElement('div');
-    top.className = 'map-top';
+    // collapsed row: name and date; click toggles the details
+    const head = document.createElement('button');
+    head.className = 'map-head';
+    head.setAttribute('aria-expanded', String(openMaps.has(m.name)));
+    const chev = document.createElement('span');
+    chev.className = 'chev';
+    chev.textContent = '▸';
     const name = document.createElement('span');
     name.className = 'map-name';
     name.textContent = m.name;
-    const view = document.createElement('button');
-    view.className = 'btn small';
-    view.textContent = state.savedName === m.name ? 'Viewing' : 'View';
-    view.disabled = state.savedName === m.name;
-    view.addEventListener('click', () => openSaved(m.name));
-    top.append(name, view);
+    const when = document.createElement('span');
+    when.className = 'when';
+    when.textContent = m.started ? new Date(m.started).toLocaleString([], {
+      month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    head.append(chev, name, when);
+    head.addEventListener('click', () => {
+      if (openMaps.has(m.name)) openMaps.delete(m.name); else openMaps.add(m.name);
+      renderMaps(lastMaps);
+    });
 
+    // details
+    const body = document.createElement('div');
+    body.className = 'map-body';
     const meta = document.createElement('div');
     meta.className = 'map-meta';
-    // stored with its UTC offset; shown in the viewer's local time
-    const when = m.started ? new Date(m.started).toLocaleString([], {
-      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
     const walked = m.path_length_m != null ? ` · ${m.path_length_m} m walked` : '';
-    const h = m.lidar_height_m != null ? ` · lidar ${Math.round(m.lidar_height_m * 100)} cm` : '';
-    meta.textContent = `${when} · ${fmtTime(m.duration_s)}${walked}${h} · ${fmtInt(m.colored_points)} colored · ${fmtInt(m.full_points)} full`;
+    const h = m.lidar_height_m != null ? ` · lidar ${Math.round(m.lidar_height_m * 1000) / 10} cm` : '';
+    meta.textContent = `${fmtTime(m.duration_s)}${walked}${h} · ${fmtInt(m.colored_points)} colored · ${fmtInt(m.full_points)} full`;
+    const view = document.createElement('button');
+    view.className = 'btn small';
+    view.textContent = viewing ? 'Viewing' : 'View in 3D';
+    view.disabled = viewing;
+    view.addEventListener('click', () => openSaved(m.name));
 
     const files = document.createElement('div');
     files.className = 'map-files';
@@ -515,15 +589,17 @@ function renderMaps(maps) {
         files.append(a);
       }
     }
-    li.append(top, meta, files);
+    body.append(meta, view, files);
+    li.append(head, body);
     ul.append(li);
   }
 }
 
+$('map-search').addEventListener('input', () => renderMaps(lastMaps));
 $('btn-refresh').addEventListener('click', loadMaps);
 
 // ---- start ----------------------------------------------------------------
-$('map-name').placeholder = defaultName();
+
 let heightFromBrowser = false;
 try {
   const saved = Number(localStorage.getItem('lidarHeightCm'));

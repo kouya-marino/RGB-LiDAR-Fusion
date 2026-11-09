@@ -34,12 +34,12 @@
         <p class="hint">Hold the rig still when you press Start (that levels the map), then walk slowly. Saved: the camera-colored points, the full lidar scan, and one copy per robot.</p>
         <div id="rec-idle">
           <label class="field">
-            <span>Map name</span>
-            <input id="map-name" autocomplete="off" spellcheck="false" maxlength="64" pattern="[A-Za-z0-9_-]{1,64}">
+            <span>Map name <span class="sub">required · letters, digits, _ -</span></span>
+            <input id="map-name" autocomplete="off" spellcheck="false" maxlength="64" pattern="[A-Za-z0-9_-]{1,64}" required placeholder="e.g. office_floor2">
           </label>
           <label class="field">
             <span>Lidar height above the floor (cm) <span class="sub">to the centre of the dome · default <span id="height-default">71.5</span></span></span>
-            <input id="lidar-height" type="number" inputmode="decimal" min="5" max="500" step="0.5" value="71.5">
+            <input id="lidar-height" type="number" inputmode="decimal" min="5" max="500" step="0.1" value="71.5">
           </label>
           <ul class="ready" id="ready" aria-label="Ready to record">
             <li id="rd-odom">Odometry</li>
@@ -82,9 +82,10 @@
 
       <section class="card grow">
         <div class="card-head">
-          <h2>Saved maps</h2>
+          <h2>Saved maps <span class="sub" id="maps-count"></span></h2>
           <button class="btn ghost small" id="btn-refresh" title="Refresh">Refresh</button>
         </div>
+        <input id="map-search" type="search" placeholder="Search maps" autocomplete="off" spellcheck="false" aria-label="Search saved maps">
         <ul class="maps" id="maps"><li class="empty">No saved maps yet.</li></ul>
       </section>
     </aside>
@@ -100,6 +101,39 @@
       <div class="help">Drag to orbit · right-drag to pan · scroll to zoom</div>
     </section>
   </main>
+
+  <dialog id="start-dlg" aria-labelledby="st-title">
+    <form method="dialog" class="dlg">
+      <h2 id="st-title">Start recording?</h2>
+      <dl class="summary">
+        <div><dt>Map name</dt><dd id="sd-name"></dd></div>
+        <div><dt>Lidar height</dt><dd id="sd-height"></dd></div>
+        <div><dt>Also saved for</dt><dd id="sd-exports"></dd></div>
+      </dl>
+      <p>Hold the rig <strong>still</strong> until recording has started: that moment levels the map.</p>
+      <div class="row">
+        <button class="btn ghost" value="cancel" formnovalidate>Cancel</button>
+        <button class="btn primary" value="ok" id="sd-ok"><span class="rec-dot"></span>Start recording</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="overwrite-dlg" aria-labelledby="ow-title">
+    <form method="dialog" class="dlg">
+      <h2 id="ow-title">Replace an existing map?</h2>
+      <p>A map named <code id="ow-name"></code> already exists<span id="ow-info"></span>.
+         Recording under this name replaces it <strong>when you save</strong>; cancelling the recording keeps the old map.
+         Lidar height: <strong id="ow-height"></strong>.</p>
+      <label class="field">
+        <span>Type <strong>OVERWRITE</strong> to confirm</span>
+        <input id="ow-input" autocomplete="off" spellcheck="false" autocapitalize="characters">
+      </label>
+      <div class="row">
+        <button class="btn ghost" value="cancel" formnovalidate>Cancel</button>
+        <button class="btn danger-solid" value="ok" id="ow-ok" disabled>Overwrite</button>
+      </div>
+    </form>
+  </dialog>
 
   <script type="module" src="/app.js"></script>
 </body>
