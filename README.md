@@ -7,10 +7,10 @@ Real-time RGB camera and Livox Mid-360 LiDAR fusion for generating colorized 3D 
 ## Demo
 
 <p align="center">
-  <img src="docs/images/demo_colored_map.gif" alt="Colored point cloud of an office, recorded with the rig on a pole: camera-colored floor and furniture, lidar walls colored by height" width="720">
+  <img src="docs/images/demo_colored_map.gif" alt="An office map in three synchronized views: lidar and camera combined, camera-colored points only, full lidar colored by height" width="900">
 </p>
 
-An office mapped in 27 s with the rig on a pole (ceiling hidden with the viewer's height clip). Camera-colored points (floor, furniture, lower walls) sit in the full lidar map, colored by height above them. The data is in [`examples/office_sample/`](examples/office_sample/).
+An office mapped in 27 s with the rig on a pole, ceiling hidden with the viewer's height clip. **Left:** the result, camera colors inside the full lidar map. **Middle:** only the camera-colored points (the camera looks 20° down, so mostly floor, furniture and lower walls). **Right:** the full lidar map, colored by height. The data is in [`examples/office_sample/`](examples/office_sample/).
 
 ## Features
 

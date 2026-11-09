@@ -158,7 +158,9 @@ function setFull(data) {
 function robustBox() {
   const xs = [], ys = [], zs = [];
   for (const p of [fullPts, coloredPts]) {
-    const a = p.visible && p.geometry.attributes.position;
+    // with ?layers= the hidden layer still sets the framing, so views that
+    // show different layers use the same camera
+    const a = (p.visible || params.has('layers')) && p.geometry.attributes.position;
     if (!a || !a.count) continue;
     const step = Math.max(1, Math.floor(a.count / 20000));
     for (let i = 0; i < a.count; i += step) { xs.push(a.getX(i)); ys.push(a.getY(i)); zs.push(a.getZ(i)); }
@@ -171,10 +173,11 @@ function robustBox() {
 }
 
 // Link options for a fixed view (shareable, and for rendering images):
-//   ?map=<name>&embed=1&az=<deg>&el=<deg>&zoom=<x>&clip=<m>
+//   ?map=<name>&embed=1&az=<deg>&el=<deg>&zoom=<x>&clip=<m>&layers=colored|full
 // embed hides the panels; az/el orbit the camera around the map's centre
 // (camera direction from the centre: az in the floor plane from +X, el above
-// the floor); zoom > 1 is closer; clip sets "hide above" (m), clip=off off.
+// the floor); zoom > 1 is closer; clip sets "hide above" (m), clip=off off;
+// layers shows only the camera-colored or only the full lidar points.
 const params = new URLSearchParams(location.search);
 const viewAz = params.has('az') ? Number(params.get('az')) : null;
 const viewEl = params.has('el') ? Number(params.get('el')) : null;
@@ -497,6 +500,13 @@ function updateClip() {
 }
 for (const id of ['clip-top', 'clip-bottom', 'clip-top-on', 'clip-bottom-on']) {
   $(id).addEventListener('input', updateClip);
+}
+if (params.get('layers') === 'colored' || params.get('layers') === 'full') {
+  const show = params.get('layers');
+  $('show-colored').checked = show === 'colored';
+  $('show-full').checked = show === 'full';
+  coloredPts.visible = show === 'colored';
+  fullPts.visible = show === 'full';
 }
 if (params.has('clip')) {
   if (params.get('clip') === 'off') $('clip-top-on').checked = false;
