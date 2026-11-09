@@ -109,7 +109,7 @@ This starts the sensors, the colorizer and the web UI. Open **http://localhost:8
 | | |
 |---|---|
 | **Live preview** | Before recording: the latest colored scan over the latest full scan, levelled, with the rig's position and heading. |
-| **Record a map** | Name it (required; a name that already exists asks you to type **OVERWRITE**, and the old map is only replaced once the new one is saved), enter the **lidar height above the floor** (cm, to the centre of the dome; default 71.5, set in `colorizer.yaml`; changing it asks for confirmation), wait for *Odometry · Camera · Held still* to turn green, press *Start recording* and confirm while holding the rig still, then walk slowly. *Stop & save* (or *Cancel* to discard). The maps and the path walked grow live in 3D; the header shows the lidar's live height above the floor (and its lowest–highest range), the distance walked and the time, and a warning appears while you turn faster than 30°/s (those scans are not colored). The height may change freely while you walk: it is only fixed at Start. |
+| **Record a map** | Name it (required; a name that already exists asks you to type **OVERWRITE**, and the old map is only replaced once the new one is saved), enter the **lidar height above the floor** (cm, to the centre of the dome, about 13 cm above the mount's bottom edge; default 85.2, set in `colorizer.yaml`; a different value is highlighted and confirmed in the Start dialog), wait for *Odometry · Camera · Held still* to turn green, press *Start recording* and confirm while holding the rig still, then walk slowly. *Stop & save* (or *Cancel* to discard). The maps and the path walked grow live in 3D; the header shows the lidar's live height above the floor (and its lowest–highest range), the distance walked and the time, and a warning appears while you turn faster than 30°/s (those scans are not colored). The height may change freely while you walk: it is only fixed at Start. |
 | **Layers** | Colored points, full lidar and path on/off; color the full lidar by height, intensity or gray; point size; fit view. |
 | **Saved maps** | Collapsed list with a search box; click a map for its details, *View in 3D*, downloads (the map itself and each robot export) and *Delete* (type the map's name to confirm; not possible while that map is being recorded). `?map=<name>` links straight to one. |
 
@@ -141,7 +141,7 @@ Recording from the command line:
 
 ```bash
 ros2 param set /colorizer map_name kitchen
-ros2 param set /colorizer lidar_height 0.715
+ros2 param set /colorizer lidar_height 0.852
 ros2 service call /colorizer/start_map std_srvs/srv/Trigger
 ros2 service call /colorizer/stop_map std_srvs/srv/Trigger    # saves output/kitchen/
 ```

@@ -12,7 +12,7 @@ Serves one static page (Three.js, vendored) plus a small JSON/binary API:
   GET  /api/maps/<name>/files/[<robot>/]<file>
                                        download colored|full .pcd|.ply (map frame
                                        or a robot export), info.json, trajectory.csv
-  POST /api/start  {"name": "...", "lidar_height": 0.715, "overwrite": false}
+  POST /api/start  {"name": "...", "lidar_height": 0.852, "overwrite": false}
                                        start recording a map (overwrite: replace
                                        an existing map of that name when saved)
   POST /api/maps/<name>/delete {"confirm": "<name>"}
@@ -398,7 +398,7 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json({'ok': False, 'message': 'bad JSON'}, HTTPStatus.BAD_REQUEST)
         if path == '/api/start':
             try:
-                height = float(body.get('lidar_height', 0.715))
+                height = float(body.get('lidar_height', 0.852))
             except (TypeError, ValueError):
                 return self._json({'ok': False, 'message': 'lidar_height must be a number'},
                                   HTTPStatus.BAD_REQUEST)

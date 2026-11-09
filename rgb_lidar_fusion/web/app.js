@@ -250,7 +250,7 @@ async function openSaved(name) {
 
 // ---- status, banner, overlay ---------------------------------------------
 const fmtInt = (n) => (n == null ? '–' : Number(n).toLocaleString());
-// metres -> "71.5" cm (one decimal only when needed)
+// metres -> "85.2" cm (one decimal only when needed)
 const toCm = (m) => Math.round(m * 1000) / 10;
 const fmtTime = (s) => {
   if (!s) return '–';

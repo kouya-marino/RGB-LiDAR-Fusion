@@ -14,7 +14,8 @@ colorizer:
     max_range: 40.0
     occl_cell: 4
     occl_tol: 0.10
-    lidar_height: 0.715       # m, lidar origin above the floor at Start (the UI's default; set from the UI)
+    lidar_height: 0.852       # m, lidar origin (dome centre) above the floor at Start: the UI's
+                              # default. Measured on the pole rig (mount base ~72 cm + 13.0 cm)
     static_gyro: 0.05         # rad/s, Start needs the rig held still
     level_window: 1.0         # s of IMU averaged for gravity
     accumulate: false         # true: start recording `map_name` at launch
