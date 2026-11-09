@@ -264,3 +264,17 @@ def test_matrix_to_quat_roundtrip_including_180_degrees():
                 [-65, 0, -90], [179.9, 0.1, 0]):
         R = se3(rpy, [0, 0, 0])[:3, :3]
         np.testing.assert_allclose(quat_to_matrix(np.array(matrix_to_quat(R))), R, atol=1e-9)
+
+
+def test_message_payload_is_fast_uint8_array():
+    import array
+    import time
+    from rgb_lidar_fusion.ros_conv import xyzi_to_msg
+    xyz = np.zeros((20000, 3), np.float32)
+    t0 = time.perf_counter()
+    msg = xyzi_to_msg(xyz, np.zeros(20000), 'map', None)
+    msg2 = xyzrgb_to_msg(xyz, np.zeros((20000, 3), np.uint8), 'map', None)
+    dt = time.perf_counter() - t0
+    assert isinstance(msg.data, array.array) and isinstance(msg2.data, array.array)
+    assert len(msg.data) == 20000 * 16
+    assert dt < 0.02, 'building two 20k-point messages took {:.0f} ms'.format(dt * 1e3)
