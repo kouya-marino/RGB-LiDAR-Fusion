@@ -22,7 +22,11 @@ Real-time RGB camera and Livox Mid-360 LiDAR fusion for generating colorized 3D 
 | LiDAR | Livox Mid-360 | Other Livox / LiDAR models: planned |
 | Camera | Intel RealSense D435i | Uses only its RGB stream; other RGB cameras with a ROS 2 driver: planned |
 
-You need the camera intrinsics and the LiDAR-to-camera extrinsic calibration. Instructions for getting them are coming soon.
+### Mount and extrinsics
+
+A 3D-printable mount holds the Mid-360 with its scan axis tilted 45° up and the D435i pitched 20° down. The CAD source, STL and **design extrinsics** (LiDAR ↔ camera transform plus a ROS 2 static TF command) are in [`hardware/mount/`](hardware/mount/).
+
+The D435i publishes its own color intrinsics. The design extrinsics are a starting point; a calibration guide for refining them on the assembled rig is coming soon.
 
 ## Installation
 
