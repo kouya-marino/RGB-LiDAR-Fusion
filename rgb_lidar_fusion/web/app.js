@@ -303,10 +303,8 @@ function renderStatus() {
   if (s.default_lidar_height) {
     state.defaultCm = toCm(s.default_lidar_height);
     $('height-default').textContent = state.defaultCm;
-    if (!heightFromBrowser && !heightTouched && !s.recording) {
-      $('lidar-height').value = state.defaultCm;
-      state.confirmedCm = state.defaultCm;
-    }
+    if (!heightTouched && !s.recording) $('lidar-height').value = state.defaultCm;
+    markHeight();
   }
 
   // turning too fast: the colorizer skips colour for these scans
@@ -398,15 +396,12 @@ $('btn-start').addEventListener('click', async () => {
     input.focus();
     return;
   }
-  // the confirmed height (an edit is confirmed when the field is left)
-  if (Number($('lidar-height').value) !== state.confirmedCm) return;
-  const cm = state.confirmedCm;
+  const cm = Math.round(Number($('lidar-height').value) * 10) / 10;
   if (!(cm >= 5 && cm <= 500)) {
     flash('Lidar height must be 5–500 cm', 'error');
     $('lidar-height').focus();
     return;
   }
-  try { localStorage.setItem('lidarHeightCm', String(cm)); } catch { /* private mode */ }
 
   // the name must not collide with a saved map, unless the user types OVERWRITE
   await loadMaps();
@@ -473,7 +468,12 @@ function showDialog(dlg, isOk) {
 
 function confirmStart(name, cm) {
   $('sd-name').textContent = name;
-  $('sd-height').textContent = `${cm} cm` + (cm === state.defaultCm ? ' (default)' : '');
+  const off = cm !== state.defaultCm;
+  $('sd-height').textContent = `${cm} cm` + (off ? '' : ' (default)');
+  $('sd-height').classList.toggle('warn-text', off);
+  $('sd-height-warn').hidden = !off;
+  $('sd-height-warn').textContent = off ? `Not the default (${state.defaultCm} cm). A wrong height ` +
+    'offsets the whole map and the robot exports by the difference.' : '';
   const ex = (state.status && state.status.exports) || [];
   $('sd-exports').textContent = ex.length
     ? ex.map((e) => `${e.name} (${Math.round(e.height * 100)} cm)`).join(', ') : 'none';
@@ -486,7 +486,8 @@ function askOverwrite(map, cm) {
   const dlg = $('overwrite-dlg');
   const input = $('ow-input');
   $('ow-name').textContent = map.name;
-  $('ow-height').textContent = `${cm} cm`;
+  $('ow-height').textContent = `${cm} cm` + (cm === state.defaultCm ? ' (default)'
+    : ` (not the default ${state.defaultCm} cm)`);
   const when = map.started ? new Date(map.started).toLocaleString([], {
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
   $('ow-info').textContent = when ? ` (saved ${when}${map.full_points != null
@@ -600,36 +601,22 @@ $('btn-refresh').addEventListener('click', loadMaps);
 
 // ---- start ----------------------------------------------------------------
 
-let heightFromBrowser = false;
-try {
-  const saved = Number(localStorage.getItem('lidarHeightCm'));
-  if (saved >= 5 && saved <= 500) {
-    $('lidar-height').value = saved;
-    heightFromBrowser = true;
-  }
-} catch { /* storage unavailable: keep the default */ }
+// The height box always starts at the configured default. Editing is free; a
+// value that differs from the default is outlined and confirmed once, in the
+// Start dialog (a per-edit confirmation fired on every arrow click).
 let heightTouched = false;
 state.defaultCm = Number($('lidar-height').value);
-state.confirmedCm = Number($('lidar-height').value);
-$('lidar-height').addEventListener('input', () => { heightTouched = true; });
-// changing the height away from the default needs a confirmation: a wrong
-// height offsets the whole map (and both robot exports) by the difference
-$('lidar-height').addEventListener('change', (e) => {
-  const v = Number(e.target.value);
-  if (!(v >= 5 && v <= 500)) {
-    flash('Lidar height must be 5–500 cm', 'error');
-    e.target.value = state.confirmedCm;
-    return;
-  }
-  if (v === state.confirmedCm) return;
-  if (v === state.defaultCm ||
-      confirm(`Change the lidar height from ${state.confirmedCm} cm to ${v} cm?\n\n` +
-              `The default is ${state.defaultCm} cm. A wrong height offsets the whole map ` +
-              `(and the robot exports) by the difference.`)) {
-    state.confirmedCm = v;
-  } else {
-    e.target.value = state.confirmedCm;
-  }
+function markHeight() {
+  const v = Number($('lidar-height').value);
+  const off = v !== state.defaultCm;
+  $('lidar-height').classList.toggle('nondefault', off);
+  $('height-reset').hidden = !off;
+}
+$('lidar-height').addEventListener('input', () => { heightTouched = true; markHeight(); });
+$('height-reset').addEventListener('click', () => {
+  $('lidar-height').value = state.defaultCm;
+  heightTouched = false;
+  markHeight();
 });
 pollStatus();
 loadMaps();
