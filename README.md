@@ -116,6 +116,21 @@ This starts the sensors, the colorizer and the web UI. Open **http://localhost:8
 | **Layers** | Colored points, full lidar and path on/off; color the full lidar by height, intensity or gray; **hide above / below** a height (cut away the ceiling to see inside a room; view only); point size; fit view. |
 | **Saved maps** | Collapsed list with a search box; click a map for its details, *View in 3D*, downloads (the map itself and each robot export) and *Delete* (type the map's name to confirm; not possible while that map is being recorded). `?map=<name>` links straight to one. |
 
+<p align="center">
+  <img src="docs/images/webui_recording.png" alt="Web UI while recording: live colored map, lidar height 85 cm, robot exports go2 and g1" width="860">
+</p>
+
+<table>
+  <tr>
+    <td width="68%"><img src="docs/images/webui_start_dialog.png" alt="Start recording dialog: map name, lidar height, robot exports"></td>
+    <td width="32%"><img src="docs/images/webui_saved_maps_list.png" alt="Saved maps list: details, Re-export, Delete, downloads for the map, go2 and g1"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Start confirms the name, lidar height and robot exports</sub></td>
+    <td align="center"><sub>Saved map: downloads for the map and each robot</sub></td>
+  </tr>
+</table>
+
 Each map is saved in its own folder in the repo's `output/` (on the host, so maps survive the container being stopped; `output/` is git-ignored):
 
 ```

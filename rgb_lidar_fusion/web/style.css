@@ -138,6 +138,7 @@ input[type="number"] {
 .map-body { display: none; flex-direction: column; gap: 6px; margin-top: 6px; }
 .map-item.open .map-body { display: flex; }
 .map-item.viewing { border-color: var(--accent); }
+.map-body .row .btn.small { padding: 4px 6px; white-space: nowrap; }
 .btn.danger-solid { background: var(--rec); border-color: var(--rec); color: #fff; }
 .btn.danger-solid:disabled { opacity: .45; }
 dialog {

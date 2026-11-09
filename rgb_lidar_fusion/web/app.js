@@ -805,7 +805,7 @@ function renderMaps(maps) {
     del.addEventListener('click', () => deleteMap(m));
     const rex = document.createElement('button');
     rex.className = 'btn small ghost';
-    rex.textContent = 'Re-export robots';
+    rex.textContent = 'Re-export';
     rex.title = 'Rewrite this map\'s robot copies from the current robot list';
     rex.addEventListener('click', () => reexportMap(m));
     const actions = document.createElement('div');
