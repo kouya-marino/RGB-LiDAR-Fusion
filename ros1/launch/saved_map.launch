@@ -1,0 +1,23 @@
+<!--
+  Publish a saved map (PCD) on a ROS 1 Noetic robot, e.g. for RViz or a
+  localization node. Uses pcl_ros (ros-noetic-pcl-ros); no build needed.
+
+    roslaunch saved_map.launch map:=/path/to/output/<name>/g1/full.pcd
+
+  The cloud is published latched-style every `interval` seconds on `topic`,
+  in `frame_id`. For a robot export (g1/, go2/...) that frame is the robot's
+  lidar where mapping started; for the map itself (<name>/full.pcd) it is the
+  levelled map frame with the floor at z = 0.
+-->
+<launch>
+  <arg name="map" doc="absolute path to a .pcd (full.pcd or colored.pcd)"/>
+  <arg name="frame_id" default="map"/>
+  <arg name="topic" default="/saved_map"/>
+  <arg name="interval" default="1.0" doc="seconds between re-publications"/>
+
+  <node pkg="pcl_ros" type="pcd_to_pointcloud" name="saved_map" output="screen"
+        args="$(arg map) $(arg interval)">
+    <param name="frame_id" value="$(arg frame_id)"/>
+    <remap from="cloud_pcd" to="$(arg topic)"/>
+  </node>
+</launch>
