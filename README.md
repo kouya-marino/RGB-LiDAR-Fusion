@@ -6,8 +6,11 @@ Real-time RGB camera and Livox Mid-360 LiDAR fusion for generating colorized 3D 
 
 ## Demo
 
-<!-- TODO: add a GIF/video showing RGB image | raw LiDAR | colorized point cloud side by side -->
-*Coming soon: RGB camera, raw LiDAR, and colorized point cloud side by side.*
+<p align="center">
+  <img src="docs/images/demo_colored_map.gif" alt="Colored point cloud of an office, recorded with the rig on a pole: camera-colored floor and furniture, lidar walls colored by height" width="720">
+</p>
+
+An office mapped in 27 s with the rig on a pole (ceiling hidden with the viewer's height clip). Camera-colored points (floor, furniture, lower walls) sit in the full lidar map, colored by height above them. The data is in [`examples/office_sample/`](examples/office_sample/).
 
 ## Features
 
@@ -163,7 +166,7 @@ Keep the rig still, facing objects with clear outlines 2–4 m away. The tool ke
 
 ## Example output
 
-Sample colorized point clouds (`.pcd` / `.ply`) will be added under [`examples/`](examples/).
+A sample map (colored and full clouds, `.pcd` and `.ply`) is in [`examples/office_sample/`](examples/office_sample/); see [`examples/README.md`](examples/README.md) for how to open it.
 
 ## Roadmap
 
@@ -177,7 +180,7 @@ Sample colorized point clouds (`.pcd` / `.ply`) will be added under [`examples/`
 - [x] LiDAR–camera extrinsic calibration tool (targetless edge alignment)
 - [x] ROS 1: use the saved maps on Noetic robots ([`ros1/`](ros1/))
 - [x] Calibration guide (see Calibration)
-- [ ] Sample data and demo GIF
+- [x] Sample data and demo GIF
 - [ ] Support for other LiDARs and cameras
 
 ## Contributing

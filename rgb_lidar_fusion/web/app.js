@@ -170,6 +170,17 @@ function robustBox() {
   return new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1));
 }
 
+// Link options for a fixed view (shareable, and for rendering images):
+//   ?map=<name>&embed=1&az=<deg>&el=<deg>&zoom=<x>&clip=<m>
+// embed hides the panels; az/el orbit the camera around the map's centre
+// (camera direction from the centre: az in the floor plane from +X, el above
+// the floor); zoom > 1 is closer; clip sets "hide above" (m), clip=off off.
+const params = new URLSearchParams(location.search);
+const viewAz = params.has('az') ? Number(params.get('az')) : null;
+const viewEl = params.has('el') ? Number(params.get('el')) : null;
+const viewZoom = params.has('zoom') ? Number(params.get('zoom')) : 1;
+if (params.get('embed') === '1') document.body.classList.add('embed');
+
 function fitView(force = false) {
   if (state.touched && !force) return;
   const box = robustBox();
@@ -177,7 +188,14 @@ function fitView(force = false) {
   const center = box.getCenter(new THREE.Vector3());
   const r = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1);
   controls.target.copy(center);
-  camera.position.set(center.x - r * 1.1, center.y - r * 1.1, center.z + r * 0.9);
+  if (viewAz !== null || viewEl !== null) {
+    const az = THREE.MathUtils.degToRad(viewAz ?? 225), el = THREE.MathUtils.degToRad(viewEl ?? 35);
+    const d = (r * 1.75) / (viewZoom || 1);
+    camera.position.set(center.x + d * Math.cos(el) * Math.cos(az),
+                        center.y + d * Math.cos(el) * Math.sin(az), center.z + d * Math.sin(el));
+  } else {
+    camera.position.set(center.x - r * 1.1, center.y - r * 1.1, center.z + r * 0.9);
+  }
   if (force) state.touched = false;
 }
 
@@ -479,6 +497,10 @@ function updateClip() {
 }
 for (const id of ['clip-top', 'clip-bottom', 'clip-top-on', 'clip-bottom-on']) {
   $(id).addEventListener('input', updateClip);
+}
+if (params.has('clip')) {
+  if (params.get('clip') === 'off') $('clip-top-on').checked = false;
+  else if (Number(params.get('clip')) > 0) $('clip-top').value = Number(params.get('clip'));
 }
 updateClip();
 $('btn-live').addEventListener('click', goLive);
