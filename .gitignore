@@ -25,9 +25,11 @@ __pycache__/
 .venv/
 venv/
 
-# Large data
+# Large data (sample outputs under examples/ are allowed)
 *.pcd
 *.ply
+!examples/**/*.pcd
+!examples/**/*.ply
 
 # Editors / OS
 .vscode/
