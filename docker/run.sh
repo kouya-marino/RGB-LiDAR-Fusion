@@ -11,6 +11,14 @@ if [ -n "$(docker ps -q -f name="^${NAME}$")" ]; then
     exec docker exec -it "$NAME" /entrypoint.sh "${@:-bash}"
 fi
 
+# A stopped container with this name (e.g. one started with `docker run -d`
+# and stopped by a reboot) would block the name. It holds nothing worth
+# keeping: maps are in the repo's output/ and builds are in named volumes.
+if [ -n "$(docker ps -aq -f name="^${NAME}$")" ]; then
+    echo "removing the stopped '$NAME' container left from an earlier run"
+    docker rm "$NAME" >/dev/null
+fi
+
 # Let this user's container processes open windows (RViz) on the host X server
 xhost +SI:localuser:"$(id -un)" >/dev/null 2>&1 || true
 
