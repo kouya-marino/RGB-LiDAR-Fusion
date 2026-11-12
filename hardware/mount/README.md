@@ -21,7 +21,11 @@ A 3D-printable mount for the Livox Mid-360S and an Intel RealSense D435i. The li
 
 The sensors in the views are rendered from Livox's published Mid-360S 3D model and the RealSense ROS description's D435 mesh, placed where the mount puts them; the CAD script's clearance checks use simple boxes, so it needs neither file.
 
-**Field of view:** the camera's whole image lies inside the lidar's band (the lidar sees −7° to +52° from its equator; the image spans +3° to +46° of that). The camera covers about 14% of the lidar's field of view, and objects closer than 0.8 m get no lidar points (FAST-LIO's `blind` setting). On a camera stick nothing is behind the mount, so the lidar also sees the ceiling and the area behind you (its upper-back band clears the back plate by ~5 cm); a wall or a hose-clamped pole blocks that part.
+**Field of view:**
+- **The lidar covers 100% of the camera's field of view.** Every direction in the camera image is inside the lidar's band (the lidar sees −7° to +52° from its equator, 360° around; the image spans +3° to +46° of that).
+- **The camera covers about 14% of the lidar's field of view** (69° × 42° of the lidar's 360° band).
+
+The lidar is sparse, so a single scan puts only a few thousand points into the image; the image fills in as you record. Also, objects closer than 0.8 m get no lidar points (FAST-LIO's `blind` setting). On a camera stick nothing is behind the mount, so the lidar also sees the ceiling and the area behind you (its upper-back band clears the back plate by ~5 cm); a wall or a hose-clamped pole blocks that part.
 
 | File | What it is |
 |------|------------|

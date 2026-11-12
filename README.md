@@ -65,6 +65,8 @@ A 3D-printable mount holds the Mid-360 with its scan axis tilted 45° up and the
   </tr>
 </table>
 
+**Coverage:** the lidar covers **100% of the camera's field of view** (every direction in the camera image is inside the lidar's band), and the camera covers about **14% of the lidar's** field of view. So any surface in the image can be colored once the lidar has hit it; the rest of the lidar map stays uncolored.
+
 The D435i publishes its own color intrinsics. The design extrinsics are a starting point; refine them on the assembled rig with the [calibration tool](#calibration).
 
 ## Installation
