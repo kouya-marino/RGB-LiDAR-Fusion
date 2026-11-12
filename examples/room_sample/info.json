@@ -1,0 +1,15 @@
+{
+  "started": "2026-11-11T11:54:28+09:00",
+  "duration_s": 766.6,
+  "scans": 3933,
+  "voxel_m": 0.03,
+  "lidar_height_m": 1.732,
+  "path_length_m": 151.72,
+  "frame": "map: gravity-levelled, floor z=0, origin below the start lidar, +X forward",
+  "name": "room_sample",
+  "colored_points": 724679,
+  "colored_voxel_m": 0.05,
+  "full_points": 433086,
+  "full_voxel_m": 0.1,
+  "exports": []
+}

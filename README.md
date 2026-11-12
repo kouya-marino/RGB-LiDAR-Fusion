@@ -6,6 +6,23 @@ Real-time RGB camera and Livox Mid-360 LiDAR fusion for generating colorized 3D 
 
 ## Demo
 
+**A whole floor**, mapped by walking 152 m in 13 min with the rig held up (lidar at 1.73 m):
+
+<p align="center">
+  <img src="docs/images/demo_full_room.gif" alt="A whole office floor in three synchronized views: lidar and camera combined, camera-colored points only, full lidar colored by height" width="900">
+</p>
+
+<p align="center">
+  <img src="docs/images/full_room_topdown.jpg" alt="Top-down view of the whole floor: lidar and camera combined, camera colors only, and the full lidar map with the walked path in red" width="900">
+</p>
+<p align="center">
+  <img src="docs/images/full_room_oblique.jpg" alt="Oblique view of the whole floor with camera colors inside the lidar map, ceiling hidden" width="640">
+</p>
+
+The views, left to right: camera colors inside the full lidar map, only the camera-colored points, and the full lidar map colored by height with the walked path (red). The colored cloud was cleaned of stray points in a point cloud editor after saving; the full lidar map is as recorded. The data is in [`examples/room_sample/`](examples/room_sample/).
+
+**One area**, turning the rig in place:
+
 <p align="center">
   <img src="docs/images/demo_colored_map.gif" alt="An office map in three synchronized views: lidar and camera combined, camera-colored points only, full lidar colored by height" width="900">
 </p>
@@ -181,7 +198,7 @@ Keep the rig still, facing objects with clear outlines 2–4 m away. The tool ke
 
 ## Example output
 
-A sample map (colored and full clouds, `.pcd` and `.ply`) is in [`examples/office_sample/`](examples/office_sample/); see [`examples/README.md`](examples/README.md) for how to open it.
+Two sample maps, each with the colored and the full cloud: a whole floor in [`examples/room_sample/`](examples/room_sample/) (`.ply`) and one area in [`examples/office_sample/`](examples/office_sample/) (`.pcd` and `.ply`); see [`examples/README.md`](examples/README.md) for how to open it.
 
 ## Roadmap
 
