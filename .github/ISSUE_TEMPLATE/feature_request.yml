@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest an idea or a new sensor to support
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do?
+      description: Describe the use case or problem first, then the idea.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware involved (if any)
+      placeholder: e.g. Ouster OS1-64, ZED 2i
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contribution
+      options:
+        - label: I'd like to help implement this

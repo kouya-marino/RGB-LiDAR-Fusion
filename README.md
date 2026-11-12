@@ -247,7 +247,7 @@ Two sample maps, each with the colored and the full cloud: a whole floor in [`ex
 
 ## Contributing
 
-Issues and pull requests are welcome, especially adapters for other LiDAR and camera hardware. Mapped something with it? Open an issue with a screenshot; it's great to see where it's used.
+Issues and pull requests are welcome, especially adapters for other LiDAR and camera hardware; see [CONTRIBUTING.md](CONTRIBUTING.md). Questions and maps you made go in [Discussions](https://github.com/kouya-marino/RGB-LiDAR-Fusion/discussions); it's great to see where it's used. Security problems: [SECURITY.md](SECURITY.md).
 
 ## Citation
 

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions and help
+    url: https://github.com/kouya-marino/RGB-LiDAR-Fusion/discussions
+    about: Ask how to set up, run or tune it, or share maps you made.
+  - name: Security vulnerability
+    url: https://github.com/kouya-marino/RGB-LiDAR-Fusion/security/advisories/new
+    about: Please report security problems privately.
