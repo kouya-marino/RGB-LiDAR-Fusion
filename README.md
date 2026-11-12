@@ -52,12 +52,12 @@ An office mapped in 27 s with the rig on a pole, ceiling hidden with the viewer'
 
 ### Mount and extrinsics
 
-A 3D-printable mount holds the Mid-360 with its scan axis tilted 45° up and the D435i pitched 20° down. The CAD source, STL and **design extrinsics** (LiDAR ↔ camera transform plus a ROS 2 static TF command) are in [`hardware/mount/`](hardware/mount/).
+A 3D-printable mount holds the Mid-360 with its scan axis tilted 45° up and the D435i pitched 20° down. It fits a camera stick or tripod (1/4"-20), a pole (hose clamps) or a wall, and all four lidar screws can be reached (the uphill pair through a window in the back). The CAD source, STL and **design extrinsics** (LiDAR ↔ camera transform plus a ROS 2 static TF command) are in [`hardware/mount/`](hardware/mount/).
 
 <table>
   <tr>
-    <td align="center"><img src="hardware/mount/images/mount_cad_views.png" alt="CAD views of the mount: front-left, side, front and back" width="420"></td>
-    <td align="center"><img src="hardware/mount/images/mount_fov.png" alt="Side view of the mount with the lidar and camera fields of view" width="380"></td>
+    <td align="center"><img src="hardware/mount/images/mount_cad_views.png" alt="CAD views of the mount, including the back window, the camera-stick socket, and the mount with the Mid-360S and D435i fitted" width="600"></td>
+    <td align="center"><img src="hardware/mount/images/mount_fov.png" alt="Side view of the mount with the lidar and camera fields of view" width="260"></td>
   </tr>
   <tr>
     <td align="center"><sub>Mount, 100 × 75 × 120 mm</sub></td>
@@ -65,7 +65,7 @@ A 3D-printable mount holds the Mid-360 with its scan axis tilted 45° up and the
   </tr>
 </table>
 
-The D435i publishes its own color intrinsics. The design extrinsics are a starting point; a calibration guide for refining them on the assembled rig is coming soon.
+The D435i publishes its own color intrinsics. The design extrinsics are a starting point; refine them on the assembled rig with the [calibration tool](#calibration).
 
 ## Installation
 

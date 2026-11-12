@@ -1,4 +1,4 @@
-watertight: True bounds: [[0.0, -50.0, 0.0], [75.0, 50.0, 120.0]] volume cm3: 193.4
+watertight: True bounds: [[0.0, -50.0, 0.0], [75.0, 50.0, 120.0]] volume cm3: 233.4
 T_lidar_cameralink (camera_link in lidar frame)
   t [m]   = [0.0842, 0.0175, -0.0669]
   q xyzw  = [0.0, -0.2164, 0.0, 0.9763]
