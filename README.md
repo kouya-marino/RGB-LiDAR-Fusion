@@ -1,8 +1,36 @@
 # RGB-LiDAR-Fusion
 
+[![ROS 2 Humble](https://img.shields.io/badge/ROS%202-Humble-22314E?logo=ros)](https://docs.ros.org/en/humble/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](docker/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Livox Mid-360](https://img.shields.io/badge/LiDAR-Livox%20Mid--360-orange)](hardware/)
+[![RealSense D435i](https://img.shields.io/badge/Camera-RealSense%20D435i-0071C5?logo=intel)](hardware/)
+[![GitHub stars](https://img.shields.io/github/stars/kouya-marino/RGB-LiDAR-Fusion?style=social)](https://github.com/kouya-marino/RGB-LiDAR-Fusion/stargazers)
+
 Real-time RGB camera and Livox Mid-360 LiDAR fusion for generating colorized 3D point clouds. Supports ROS/ROS2 and provides a foundation for 3D perception, mapping, and robotics applications.
 
-> **Status:** early development. The first target is the Livox Mid-360; the pipeline is designed so other LiDARs and cameras can be added later.
+**Walk around with a lidar and a camera on a stick, and watch a colored 3D map of the place build up in your browser.** Save it as PCD/PLY, ready for your robot.
+
+### Highlights
+
+- 🎨 **Live colorized mapping**: every 10 Hz lidar scan is colored from the camera, with occlusion checks, and FAST-LIO2 tracks the rig as you walk
+- 🌐 **Web UI**: watch the map grow in 3D, record, save, browse and download maps from any device on the network
+- 📐 **Ready-to-use maps**: gravity-levelled with the floor at z = 0, plus exports for robots (Unitree Go2 / G1 heights built in, your own in the UI)
+- 🎯 **Targetless calibration**: one command aligns the lidar to the camera from an ordinary scene
+- 🖨️ **Printable mount** for the Mid-360 + D435i that fits a camera stick, a pole or a wall
+- 🐳 **One container**: ROS 2 Humble with the RealSense driver from apt; the Livox SDK and driver, FAST-LIO2 and Three.js are vendored in the repo, so nothing is fetched from GitHub or a CDN
+
+### Quick start
+
+```bash
+docker/build.sh && docker/run.sh                       # build the image, open a shell in the container
+cd /ws && colcon build && source install/setup.bash    # inside the container
+ros2 launch rgb_lidar_fusion colorize.launch.py        # sensors + mapping + web UI
+```
+
+Then open **http://localhost:8080**. First time? Set up the lidar's network as in [Installation](#installation).
+
+> **Status:** working end to end on the reference rig (Livox Mid-360S + RealSense D435i). The pipeline is designed so other LiDARs and cameras can be added later.
 
 ## Demo
 
@@ -219,7 +247,25 @@ Two sample maps, each with the colored and the full cloud: a whole floor in [`ex
 
 ## Contributing
 
-Issues and pull requests are welcome, especially adapters for other LiDAR and camera hardware.
+Issues and pull requests are welcome, especially adapters for other LiDAR and camera hardware. Mapped something with it? Open an issue with a screenshot; it's great to see where it's used.
+
+## Citation
+
+If you use RGB-LiDAR-Fusion in your work, please cite it (GitHub's **Cite this repository** button gives the same in other formats):
+
+```bibtex
+@software{rawat_rgb_lidar_fusion,
+  author = {Rawat, Prashant},
+  title  = {{RGB-LiDAR-Fusion}: Real-time colorized 3D mapping with a Livox Mid-360 and an RGB camera},
+  url    = {https://github.com/kouya-marino/RGB-LiDAR-Fusion},
+  year   = {2026},
+  version = {0.1.0}
+}
+```
+
+## Support the project
+
+If this project is useful to you, please give it a ⭐ on GitHub: it helps other people find it.
 
 ## License
 

@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "RGB-LiDAR-Fusion: Real-time colorized 3D mapping with a Livox Mid-360 and an RGB camera"
+type: software
+authors:
+  - family-names: Rawat
+    given-names: Prashant
+repository-code: "https://github.com/kouya-marino/RGB-LiDAR-Fusion"
+license: MIT
+version: 0.1.0
+date-released: 2026-11-12
+keywords:
+  - lidar
+  - camera
+  - sensor fusion
+  - colorized point cloud
+  - 3D mapping
+  - Livox Mid-360
+  - RealSense
+  - ROS 2
+  - FAST-LIO
