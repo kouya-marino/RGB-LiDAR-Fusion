@@ -11,7 +11,10 @@ colorizer:
     max_wait: 0.3             # s, a scan waits this long for an image after its midpoint
     max_ang_rate: 30.0        # deg/s, faster turns are not coloured (still mapped)
     min_range: 0.1
-    max_range: 40.0
+    max_range: 10.0           # m, farthest point that gets a color: the UI's default (1-40 m).
+                              # Color accuracy drops with distance (0.2 deg of calibration error
+                              # is 1.4 cm at 4 m, 7 cm at 20 m); farther points still go into
+                              # the full lidar map.
     occl_cell: 4
     occl_tol: 0.10
     lidar_height: 0.852       # m, lidar origin (dome centre) above the floor at Start: the UI's

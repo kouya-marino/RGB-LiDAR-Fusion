@@ -42,6 +42,15 @@
               <button type="button" class="link" id="height-reset" hidden>Reset to default</button></span>
             <input id="lidar-height" type="number" inputmode="decimal" min="5" max="500" step="0.1" value="85.2">
           </label>
+          <label class="field">
+            <span>Max color distance (m) <span class="sub">farther points stay uncolored · default <span id="range-default">10</span></span>
+              <button type="button" class="link" id="range-reset" hidden>Reset to default</button></span>
+            <input id="color-range" type="number" inputmode="decimal" min="1" max="40" step="0.5" value="10">
+          </label>
+          <div class="field">
+            <label class="check"><input type="checkbox" id="auto-stop-on">Auto-stop (stop &amp; save) after</label>
+            <div class="inline-num"><input id="auto-stop-s" type="number" inputmode="numeric" min="10" max="3600" step="1" value="60" disabled aria-label="Auto-stop after (seconds)"><span>s <span class="sub">· 10–3600</span></span></div>
+          </div>
           <ul class="ready" id="ready" aria-label="Ready to record">
             <li id="rd-odom">Odometry</li>
             <li id="rd-cam">Camera</li>
@@ -52,6 +61,7 @@
         </div>
         <div id="rec-active" hidden>
           <div class="rec-name"><span class="rec-dot live"></span><span id="rec-name"></span></div>
+          <p class="hint small" id="auto-note"></p>
           <p class="hint small" id="fast-note"></p>
           <div class="row">
             <button class="btn primary" id="btn-stop">Stop &amp; save</button>
@@ -96,6 +106,15 @@
           <input type="range" id="clip-bottom" min="-1" max="2" step="0.05" value="0.05" aria-label="Hide points below this height (m)" disabled>
           <p class="hint small">Heights above the floor; view only, saved files are not changed.</p>
         </div>
+        <div class="clip">
+          <label class="check"><input type="checkbox" id="crop-on">Crop X/Y (m)</label>
+          <div class="crop-grid">
+            <span>X</span><input id="crop-x0" type="number" inputmode="decimal" step="0.5" aria-label="X from (m)"><span>to</span><input id="crop-x1" type="number" inputmode="decimal" step="0.5" aria-label="X to (m)">
+            <span>Y</span><input id="crop-y0" type="number" inputmode="decimal" step="0.5" aria-label="Y from (m)"><span>to</span><input id="crop-y1" type="number" inputmode="decimal" step="0.5" aria-label="Y to (m)">
+          </div>
+          <button class="btn small ghost" id="crop-fit" type="button">Fit to map</button>
+          <p class="hint small" id="crop-note">Hides points outside the box, e.g. seen through windows. View only.</p>
+        </div>
         <label class="field inline">
           <span>Point size <output id="size-out">2</output></span>
           <input type="range" id="point-size" min="1" max="8" step="1" value="2">
@@ -121,6 +140,16 @@
       </div>
       <div class="overlay" id="overlay" hidden><p id="overlay-text"></p></div>
       <div class="turn-warn" id="turn-warn" role="alert" hidden></div>
+      <div class="countdown" id="countdown" role="timer" aria-live="assertive" hidden>
+        <div class="cd-box">
+          <div class="cd-text" id="cd-text">Recording starts in</div>
+          <div class="cd-num" id="cd-num">15</div>
+          <div class="row">
+            <button class="btn ghost" id="cd-cancel" type="button">Cancel</button>
+            <button class="btn primary" id="cd-now" type="button">Start now</button>
+          </div>
+        </div>
+      </div>
       <div class="help">Drag to orbit · right-drag to pan · scroll to zoom</div>
     </section>
   </main>
@@ -131,10 +160,12 @@
       <dl class="summary">
         <div><dt>Map name</dt><dd id="sd-name"></dd></div>
         <div><dt>Lidar height</dt><dd id="sd-height"></dd></div>
+        <div><dt>Colors up to</dt><dd id="sd-range"></dd></div>
+        <div><dt>Auto-stop</dt><dd id="sd-auto"></dd></div>
         <div><dt>Also saved for</dt><dd id="sd-exports"></dd></div>
       </dl>
       <p class="warn-text" id="sd-height-warn" hidden></p>
-      <p>Hold the rig <strong>still</strong> until recording has started: that moment levels the map.</p>
+      <p>Recording starts after a <strong>15 s countdown</strong>. Hold the rig <strong>still</strong> at the end of it: that moment levels the map.</p>
       <div class="row">
         <button class="btn ghost" value="cancel" formnovalidate>Cancel</button>
         <button class="btn primary" value="ok" id="sd-ok"><span class="rec-dot"></span>Start recording</button>
@@ -147,7 +178,8 @@
       <h2 id="ow-title">Replace an existing map?</h2>
       <p>A map named <code id="ow-name"></code> already exists<span id="ow-info"></span>.
          Recording under this name replaces it <strong>when you save</strong>; cancelling the recording keeps the old map.
-         Lidar height: <strong id="ow-height"></strong>.</p>
+         Lidar height: <strong id="ow-height"></strong>, colors up to <strong id="ow-range"></strong>, auto-stop: <strong id="ow-auto"></strong>.
+         Recording starts after a 15 s countdown.</p>
       <label class="field">
         <span>Type <strong>OVERWRITE</strong> to confirm</span>
         <input id="ow-input" autocomplete="off" spellcheck="false" autocapitalize="characters">

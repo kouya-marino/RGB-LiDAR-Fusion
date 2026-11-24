@@ -159,9 +159,9 @@ This starts the sensors, the colorizer and the web UI. Open **http://localhost:8
 | | |
 |---|---|
 | **Live preview** | Before recording: the latest colored scan over the latest full scan, levelled, with the rig's position and heading. |
-| **Record a map** | Name it (required; a name that already exists asks you to type **OVERWRITE**, and the old map is only replaced once the new one is saved), enter the **lidar height above the floor** (cm, to the centre of the dome, about 13 cm above the mount's bottom edge; default 85.2, set in `colorizer.yaml`; a different value is highlighted and confirmed in the Start dialog), wait for *Odometry · Camera · Held still* to turn green, press *Start recording* and confirm while holding the rig still, then walk slowly. *Stop & save* (or *Cancel* to discard). The maps and the path walked grow live in 3D; the header shows the lidar's live height above the floor (and its lowest–highest range), the distance walked and the time, and a warning appears while you turn faster than 30°/s (those scans are not colored). The height may change freely while you walk: it is only fixed at Start. |
-| **Layers** | Colored points, full lidar and path on/off; color the full lidar by height, intensity or gray; **hide above / below** a height (cut away the ceiling to see inside a room; view only); point size; fit view. |
-| **Saved maps** | Collapsed list with a search box; click a map for its details, *View in 3D*, downloads (the map itself and each robot export) and *Delete* (type the map's name to confirm; not possible while that map is being recorded). `?map=<name>` links straight to one. |
+| **Record a map** | Name it (required; a name that already exists asks you to type **OVERWRITE**, and the old map is only replaced once the new one is saved), enter the **lidar height above the floor** (cm, to the centre of the dome, about 13 cm above the mount's bottom edge; default 85.2, set in `colorizer.yaml`; a different value is highlighted and confirmed in the Start dialog), optionally change the **max color distance** (default 10 m: farther points are not colored, since color accuracy drops with distance; they still go into the full lidar map) and tick **Auto-stop** to stop and save after 10–3600 s (it runs in the colorizer, so it works with the browser closed). Wait for *Odometry · Camera · Held still* to turn green, press *Start recording* and confirm: a **15 s countdown** gives you time to get into position (*Start now* skips it, *Cancel* or Esc aborts), and its last 3 s ask you to hold the rig still, because that moment levels the map. Then walk slowly. *Stop & save* (or *Cancel* to discard). The maps and the path walked grow live in 3D; the header shows the lidar's live height above the floor (and its lowest–highest range), the distance walked and the time, and a warning appears while you turn faster than 30°/s (those scans are not colored). The height may change freely while you walk: it is only fixed at Start. |
+| **Layers** | Colored points, full lidar and path on/off; color the full lidar by height, intensity or gray; **hide above / below** a height (cut away the ceiling to see inside a room; view only); **crop X/Y** to a box (*Fit to map* sets it to the 1st–99th percentile of the map plus 0.5 m, which hides stray points seen through windows; view only); point size; fit view. |
+| **Saved maps** | Collapsed list with a search box; click a map for its details, *View in 3D*, downloads (the map itself and each robot export) and *Delete* (type the map's name to confirm; not possible while that map is being recorded). `?map=<name>` links straight to one; add `&crop=x0,x1,y0,y1` (m) to share a cropped view. |
 
 <p align="center">
   <img src="docs/images/webui_recording.png" alt="Web UI while recording: live colored map, lidar height 85 cm, robot exports go2 and g1" width="860">
@@ -169,11 +169,11 @@ This starts the sensors, the colorizer and the web UI. Open **http://localhost:8
 
 <table>
   <tr>
-    <td width="68%"><img src="docs/images/webui_start_dialog.png" alt="Start recording dialog: map name, lidar height, robot exports"></td>
+    <td width="68%"><img src="docs/images/webui_start_dialog.png" alt="Start recording dialog: map name, lidar height, color distance 10 m, auto-stop after 300 s, robot exports go2 and g1"></td>
     <td width="32%"><img src="docs/images/webui_saved_maps_list.png" alt="Saved maps list: details, Re-export, Delete, downloads for the map, go2 and g1"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Start confirms the name, lidar height and robot exports</sub></td>
+    <td align="center"><sub>Start confirms the name, lidar height, color distance, auto-stop and robot exports, then counts down 15 s</sub></td>
     <td align="center"><sub>Saved map: downloads for the map and each robot</sub></td>
   </tr>
 </table>
@@ -187,7 +187,8 @@ output/<name>/
   go2/  colored.* full.*     # the same, with the origin at a Go2 lidar (45 cm above the floor)
   g1/   colored.* full.*     # the same, with the origin at a G1 lidar (125 cm above the floor)
   trajectory.csv             # t, x, y, z of the lidar along the walk
-  info.json                  # start time, duration, distance walked, lidar height, point counts, exports
+  info.json                  # start time, duration, distance walked, lidar height, color distance,
+                             # auto-stop, point counts, exports
 ```
 
 **Frames.** The map frame is gravity-levelled: **floor at z = 0**, origin on the floor directly below the lidar where recording started, **+X** = the direction the rig faced at the start (its lidar +X, flattened). A robot export puts the origin at that robot's lidar instead (`z -= height`), as if the robot's lidar had started where the rig's did, so the robot can start localization at the map origin. Edit the robots in the web UI's **Robot exports** panel (add, remove, rename, lidar height, roll, pitch): the list is saved to `output/robots.json` and used for every recording after that; the defaults (Go2 45 cm, G1 125 cm) come from [`config/colorizer.yaml`](rgb_lidar_fusion/config/colorizer.yaml). **Roll** (0–180°, about the forward axis: 0 upright, 180 upside down) and **pitch** (−90–90°, nose down positive) describe the lidar **as the robot's driver reports it**: a Livox driver configured with roll 180 (like the G1's) already reports an upside-down lidar upright, so use 0 there. A saved map's *Re-export robots* rewrites its robot copies from the current list (exact: they are a height shift of the saved map).
@@ -199,14 +200,16 @@ output/<name>/
 | `/colored_scan`, `/lidar_scan` | Each scan in the `map` frame: colored points (only what the camera sees) / all points with intensity, 10 Hz |
 | `/colored_map`, `/lidar_map` | The growing maps while recording (1 s / 2 s; the live full map is thinned to 10 cm) |
 | TF `map → camera_init` | The levelled map frame on top of FAST-LIO's world frame |
-| `/colorizer/status` | JSON status, 1 Hz |
-| `/colorizer/start_map`, `stop_map`, `cancel_map`, `save_cloud` | `std_srvs/Trigger`; name and height come from the `map_name` and `lidar_height` parameters |
+| `/colorizer/status` | JSON status, 2 Hz |
+| `/colorizer/start_map`, `stop_map`, `cancel_map`, `save_cloud` | `std_srvs/Trigger`; name, height and color distance come from the `map_name`, `lidar_height` and `max_range` parameters; `auto_stop_s` (one-shot, 0 = off) stops and saves after that many seconds |
 
 Recording from the command line:
 
 ```bash
 ros2 param set /colorizer map_name kitchen
 ros2 param set /colorizer lidar_height 0.852
+ros2 param set /colorizer max_range 10.0        # optional: max color distance, m
+ros2 param set /colorizer auto_stop_s 600       # optional: stop and save after 10 min
 ros2 service call /colorizer/start_map std_srvs/srv/Trigger
 ros2 service call /colorizer/stop_map std_srvs/srv/Trigger    # saves output/kitchen/
 ```

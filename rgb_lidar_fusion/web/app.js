@@ -42,6 +42,9 @@ scene.add(grid, new THREE.AxesHelper(0.5));
 // are applied on the GPU, so changing them costs nothing and data is untouched.
 const clipTop = new THREE.Plane(new THREE.Vector3(0, 0, -1), 2.2);      // keep z <= 2.2
 const clipBottom = new THREE.Plane(new THREE.Vector3(0, 0, 1), -0.05);  // keep z >= 0.05
+// x/y crop (view only): keep x0 <= x <= x1 and y0 <= y <= y1
+const cropPlanes = [new THREE.Plane(new THREE.Vector3(1, 0, 0), 0), new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0),
+  new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Plane(new THREE.Vector3(0, -1, 0), 0)];
 const clipPlanes = [];
 const material = (size) => new THREE.PointsMaterial({
   size, sizeAttenuation: false, vertexColors: true, clippingPlanes: clipPlanes });
@@ -163,7 +166,12 @@ function robustBox() {
     const a = (p.visible || params.has('layers')) && p.geometry.attributes.position;
     if (!a || !a.count) continue;
     const step = Math.max(1, Math.floor(a.count / 20000));
-    for (let i = 0; i < a.count; i += step) { xs.push(a.getX(i)); ys.push(a.getY(i)); zs.push(a.getZ(i)); }
+    const c = cropBox();           // frame what the crop leaves visible
+    for (let i = 0; i < a.count; i += step) {
+      const x = a.getX(i), y = a.getY(i);
+      if (c && (x < c.x0 || x > c.x1 || y < c.y0 || y > c.y1)) continue;
+      xs.push(x); ys.push(y); zs.push(a.getZ(i));
+    }
   }
   if (!xs.length) return null;
   const q = (v, f) => v[Math.min(v.length - 1, Math.floor(f * v.length))];
@@ -174,10 +182,12 @@ function robustBox() {
 
 // Link options for a fixed view (shareable, and for rendering images):
 //   ?map=<name>&embed=1&az=<deg>&el=<deg>&zoom=<x>&clip=<m>&layers=colored|full
+//     &crop=<x0>,<x1>,<y0>,<y1>  (m, x/y crop box)
 // embed hides the panels; az/el orbit the camera around the map's centre
 // (camera direction from the centre: az in the floor plane from +X, el above
 // the floor); zoom > 1 is closer; clip sets "hide above" (m), clip=off off;
-// layers shows only the camera-colored or only the full lidar points.
+// layers shows only the camera-colored or only the full lidar points; crop
+// hides everything outside the x/y box.
 const params = new URLSearchParams(location.search);
 const viewAz = params.has('az') ? Number(params.get('az')) : null;
 const viewEl = params.has('el') ? Number(params.get('el')) : null;
@@ -243,6 +253,7 @@ function goLive() {
   state.savedName = null;
   clearClouds();
   state.touched = false;
+  if ($('crop-on').checked) { $('crop-on').checked = false; updateClip(); }   // box was for another map
   $('btn-live').hidden = true;
   renderBanner();
   renderMaps(lastMaps);
@@ -268,6 +279,8 @@ async function openSaved(name) {
     if (state.savedName !== name) return;
     if (cb) setColored(decode(cb, 'rgb'));
     if (fb) setFull(decode(fb, 'i'));
+    if ($('crop-on').checked && !state.cropFromLink) fitCrop(true);   // a box from another map
+    state.cropFromLink = false;
     fitView(true);
   } catch (e) {
     flash(`Could not load ${name}: ${e.message}`, 'error');
@@ -324,7 +337,17 @@ function renderStatus() {
   } else {
     $('st-height').textContent = '–';
   }
-  $('st-time').textContent = s.recording ? fmtTime(s.elapsed_s) : '–';
+  $('st-time').textContent = !s.recording ? '–'
+    : s.auto_stop_s ? `${fmtTime(s.elapsed_s) || '0:00'} / ${fmtTime(s.auto_stop_s)}` : fmtTime(s.elapsed_s);
+  $('auto-note').textContent = s.recording && s.auto_stop_s
+    ? `Auto-stop in ${fmtTime(Math.max(0, s.auto_stop_s - s.elapsed_s)) || '0:00'}: the map is saved then.` : '';
+  // a recording that ended without this page pressing Stop (auto-stop, another
+  // browser): show it and refresh the saved maps
+  if (state.wasRecording && !s.recording && s.connected && !state.busy) {
+    flash(s.last_saved ? `Map saved: ${s.last_saved}` : 'Recording ended.', 'ok');
+    loadMaps();
+  }
+  if (s.connected) state.wasRecording = !!s.recording;
 
   // default height = the colorizer's configured default, unless this browser
   // remembers the last one used or the user is typing
@@ -333,6 +356,12 @@ function renderStatus() {
     $('height-default').textContent = state.defaultCm;
     if (!heightTouched && !s.recording) $('lidar-height').value = state.defaultCm;
     markHeight();
+  }
+  if (s.default_color_range) {
+    state.defaultRange = Math.round(s.default_color_range * 10) / 10;
+    $('range-default').textContent = state.defaultRange;
+    if (!rangeTouched && !s.recording) $('color-range').value = state.defaultRange;
+    markRange();
   }
 
   // turning too fast: the colorizer skips colour for these scans
@@ -357,7 +386,7 @@ function renderStatus() {
   $('rec-idle').hidden = !!s.recording;
   $('rec-active').hidden = !s.recording;
   $('rec-name').textContent = s.map_name || '';
-  $('btn-start').disabled = !s.connected || state.busy;
+  $('btn-start').disabled = !s.connected || state.busy || state.counting;
   $('btn-stop').disabled = state.busy;
   $('btn-cancel').disabled = state.busy;
   if (state.mode === 'live') renderBanner();
@@ -431,23 +460,41 @@ $('btn-start').addEventListener('click', async () => {
     $('lidar-height').focus();
     return;
   }
+  const range = Math.round(Number($('color-range').value) * 10) / 10;
+  if (!(range >= 1 && range <= 40)) {
+    flash('Max color distance must be 1–40 m', 'error');
+    $('color-range').focus();
+    return;
+  }
+  let autoStop = 0;
+  if ($('auto-stop-on').checked) {
+    autoStop = Number($('auto-stop-s').value);
+    if (!(Number.isInteger(autoStop) && autoStop >= 10 && autoStop <= 3600)) {
+      flash('Auto-stop must be a whole number of seconds, 10–3600', 'error');
+      $('auto-stop-s').focus();
+      return;
+    }
+  }
+  const opts = { cm, range, autoStop };
 
   // the name must not collide with a saved map, unless the user types OVERWRITE
   await loadMaps();
   let overwrite = false;
   const existing = lastMaps.find((m) => m.name === name);
   if (existing) {                     // the OVERWRITE dialog is the confirmation
-    overwrite = await askOverwrite(existing, cm);
+    overwrite = await askOverwrite(existing, opts);
     if (!overwrite) { flash('Not started: choose another name.', ''); return; }
-  } else if (!await confirmStart(name, cm)) {
+  } else if (!await confirmStart(name, opts)) {
     return;
   }
-  let r = await post('/api/start', { name, lidar_height: cm / 100, overwrite });
+  if (!await countdown(COUNTDOWN_S)) { flash('Not started.', ''); return; }
+  const body = { name, lidar_height: cm / 100, overwrite, color_range: range, auto_stop_s: autoStop };
+  let r = await post('/api/start', body);
   if (!r.ok && !overwrite && /already exists/.test(r.message || '')) {   // saved meanwhile
     await loadMaps();
-    overwrite = await askOverwrite(lastMaps.find((m) => m.name === name) || { name }, cm);
+    overwrite = await askOverwrite(lastMaps.find((m) => m.name === name) || { name }, opts);
     if (!overwrite) { flash('Not started: choose another name.', ''); return; }
-    r = await post('/api/start', { name, lidar_height: cm / 100, overwrite });
+    r = await post('/api/start', { ...body, overwrite });
   }
   flash(r.message, r.ok ? 'ok' : 'error');
   if (r.ok) {
@@ -496,11 +543,60 @@ function updateClip() {
   clipPlanes.length = 0;                       // the materials share this array
   if ($('clip-top-on').checked) clipPlanes.push(clipTop);
   if ($('clip-bottom-on').checked) clipPlanes.push(clipBottom);
+  // the x/y crop lives in the same array, so it is rebuilt here too
+  const on = $('crop-on').checked, c = cropBox();
+  for (const id of CROP_IDS) $(id).classList.toggle('bad', on && !c);
+  $('crop-note').textContent = on && !c ? 'Enter both ranges (from < to), or use Fit to map.' : CROP_HINT;
+  if (c) {
+    cropPlanes[0].constant = -c.x0; cropPlanes[1].constant = c.x1;
+    cropPlanes[2].constant = -c.y0; cropPlanes[3].constant = c.y1;
+    clipPlanes.push(...cropPlanes);
+  }
   for (const p of [fullPts, coloredPts]) p.material.needsUpdate = true;
 }
-for (const id of ['clip-top', 'clip-bottom', 'clip-top-on', 'clip-bottom-on']) {
+for (const id of ['clip-top', 'clip-bottom', 'clip-top-on', 'clip-bottom-on', 'crop-on']) {
   $(id).addEventListener('input', updateClip);
 }
+
+// ---- x/y crop (view only) ---------------------------------------------------
+const CROP_IDS = ['crop-x0', 'crop-x1', 'crop-y0', 'crop-y1'];
+const CROP_HINT = $('crop-note').textContent;
+// the active box, or null when off or not a valid box (an empty or inverted
+// box would hide everything and look like a failed load)
+function cropBox() {
+  if (!$('crop-on').checked) return null;
+  const v = CROP_IDS.map((id) => ($(id).value === '' ? NaN : Number($(id).value)));
+  if (!v.every(Number.isFinite)) return null;
+  const [x0, x1, y0, y1] = v;
+  return x0 < x1 && y0 < y1 ? { x0, x1, y0, y1 } : null;
+}
+// Fit the box to the map: the 1st..99th percentile of the points on x and y
+// plus 0.5 m, so a few far returns (through windows) fall outside while the
+// walls stay in. Works for a rig turned in place as well as a walk.
+function fitCrop(quiet = false) {
+  const src = fullPts.geometry.attributes.position?.count ? fullPts : coloredPts;
+  const a = src.geometry.attributes.position;
+  if (!a || !a.count) {
+    if (!quiet) flash('No map loaded to fit the box to.', 'error');
+    return false;
+  }
+  const xs = [], ys = [];
+  const step = Math.max(1, Math.floor(a.count / 50000));
+  for (let i = 0; i < a.count; i += step) { xs.push(a.getX(i)); ys.push(a.getY(i)); }
+  const q = (v, f) => { v.sort((p, r) => p - r); return v[Math.min(v.length - 1, Math.floor(f * v.length))]; };
+  const lo = (v) => Math.floor((q(v, 0.01) - 0.5) * 2) / 2, hi = (v) => Math.ceil((q(v, 0.99) + 0.5) * 2) / 2;
+  [$('crop-x0').value, $('crop-x1').value, $('crop-y0').value, $('crop-y1').value] = [lo(xs), hi(xs), lo(ys), hi(ys)];
+  $('crop-on').checked = true;
+  updateClip();
+  return true;
+}
+for (const id of CROP_IDS) {
+  $(id).addEventListener('input', () => { $('crop-on').checked = true; updateClip(); });
+}
+$('crop-fit').addEventListener('click', () => { if (fitCrop()) fitView(true); });
+$('crop-on').addEventListener('change', () => {          // switched on with no box yet: fit one
+  if ($('crop-on').checked && CROP_IDS.some((id) => $(id).value === '') && fitCrop(true)) fitView(true);
+});
 if (params.get('layers') === 'colored' || params.get('layers') === 'full') {
   const show = params.get('layers');
   $('show-colored').checked = show === 'colored';
@@ -511,6 +607,14 @@ if (params.get('layers') === 'colored' || params.get('layers') === 'full') {
 if (params.has('clip')) {
   if (params.get('clip') === 'off') $('clip-top-on').checked = false;
   else if (Number(params.get('clip')) > 0) $('clip-top').value = Number(params.get('clip'));
+}
+if (params.has('crop')) {
+  const v = params.get('crop').split(',').map(Number);
+  if (v.length === 4 && v.every(Number.isFinite)) {
+    CROP_IDS.forEach((id, i) => { $(id).value = v[i]; });
+    $('crop-on').checked = true;
+    state.cropFromLink = true;      // keep this box when the linked map loads
+  }
 }
 updateClip();
 $('btn-live').addEventListener('click', goLive);
@@ -524,8 +628,13 @@ function showDialog(dlg, isOk) {
   });
 }
 
-function confirmStart(name, cm) {
+const autoLabel = (s) => (s ? `after ${s} s (${fmtTime(s)})` : 'off, stop it yourself');
+
+function confirmStart(name, { cm, range, autoStop }) {
   $('sd-name').textContent = name;
+  $('sd-auto').textContent = autoLabel(autoStop);
+  $('sd-range').textContent = `${range} m` +
+    (range === state.defaultRange ? ' (default)' : ` (default ${state.defaultRange} m)`);
   const off = cm !== state.defaultCm;
   $('sd-height').textContent = `${cm} cm` + (off ? '' : ' (default)');
   $('sd-height').classList.toggle('warn-text', off);
@@ -539,9 +648,11 @@ function confirmStart(name, cm) {
   return p;
 }
 
-function askOverwrite(map, cm) {
+function askOverwrite(map, { cm, range, autoStop }) {
   const dlg = $('overwrite-dlg');
   const input = $('ow-input');
+  $('ow-range').textContent = `${range} m`;
+  $('ow-auto').textContent = autoLabel(autoStop);
   $('ow-name').textContent = map.name;
   $('ow-height').textContent = `${cm} cm` + (cm === state.defaultCm ? ' (default)'
     : ` (not the default ${state.defaultCm} cm)`);
@@ -793,7 +904,9 @@ function renderMaps(maps) {
     meta.className = 'map-meta';
     const walked = m.path_length_m != null ? ` · ${m.path_length_m} m walked` : '';
     const h = m.lidar_height_m != null ? ` · lidar ${Math.round(m.lidar_height_m * 1000) / 10} cm` : '';
-    meta.textContent = `${fmtTime(m.duration_s)}${walked}${h} · ${fmtInt(m.colored_points)} colored · ${fmtInt(m.full_points)} full`;
+    const cr = m.color_range_m != null ? ` · colors ≤ ${m.color_range_m} m` : '';   // older maps: not recorded
+    const as = m.stopped_by === 'auto-stop' ? ' · auto-stopped' : '';
+    meta.textContent = `${fmtTime(m.duration_s)}${as}${walked}${h}${cr} · ${fmtInt(m.colored_points)} colored · ${fmtInt(m.full_points)} full`;
     const view = document.createElement('button');
     view.className = 'btn small';
     view.textContent = viewing ? 'Viewing' : 'View in 3D';
@@ -864,6 +977,63 @@ $('height-reset').addEventListener('click', () => {
   heightTouched = false;
   markHeight();
 });
+// Max color distance: same pattern as the height (default from the colorizer,
+// outlined when changed, shown once in the Start dialog).
+let rangeTouched = false;
+state.defaultRange = Number($('color-range').value);
+function markRange() {
+  const off = Number($('color-range').value) !== state.defaultRange;
+  $('color-range').classList.toggle('nondefault', off);
+  $('range-reset').hidden = !off;
+}
+$('color-range').addEventListener('input', () => { rangeTouched = true; markRange(); });
+$('range-reset').addEventListener('click', () => {
+  $('color-range').value = state.defaultRange;
+  rangeTouched = false;
+  markRange();
+});
+// Auto-stop: off unless ticked; the colorizer stops and saves on time, so it
+// works with this page closed.
+$('auto-stop-on').addEventListener('change', (e) => {
+  $('auto-stop-s').disabled = !e.target.checked;
+  if (e.target.checked) $('auto-stop-s').focus();
+});
+
+// Countdown between confirming and starting: time to get into position. The
+// last seconds ask for the rig to be still, since Start levels the map.
+// Resolves true to start (time up or "Start now"), false on Cancel / Escape.
+const COUNTDOWN_S = 15;
+function countdown(seconds) {
+  return new Promise((resolve) => {
+    const box = $('countdown');
+    let left = seconds, timer = null;
+    const show = () => {
+      $('cd-num').textContent = left;
+      $('cd-text').textContent = left <= 3 ? 'Hold the rig still' : 'Recording starts in';
+      box.classList.toggle('still', left <= 3);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') done(false); };
+    function done(go) {
+      clearInterval(timer);
+      box.hidden = true;
+      $('cd-cancel').onclick = $('cd-now').onclick = null;
+      document.removeEventListener('keydown', onKey);
+      state.counting = false;
+      renderStatus();
+      resolve(go);
+    }
+    state.counting = true;
+    renderStatus();
+    $('rec-msg').textContent = '';             // an older message would read as current
+    show();
+    box.hidden = false;
+    $('cd-cancel').onclick = () => done(false);
+    $('cd-now').onclick = () => done(true);
+    document.addEventListener('keydown', onKey);
+    $('cd-cancel').focus();
+    timer = setInterval(() => { left -= 1; if (left <= 0) done(true); else show(); }, 1000);
+  });
+}
 pollStatus();
 loadMaps();
 setInterval(loadMaps, 15000);

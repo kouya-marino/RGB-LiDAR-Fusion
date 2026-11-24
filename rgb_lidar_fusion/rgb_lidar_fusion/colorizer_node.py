@@ -84,6 +84,36 @@ def valid_map_name(name: str) -> bool:
     return bool(MAP_NAME_RE.match(name or ''))
 
 
+AUTO_STOP_S = (10, 3600)         # allowed auto-stop time, s (0 = off)
+
+
+def auto_stop_error(value) -> Optional[str]:
+    """Why `value` (s, 0 = off) is not a usable auto-stop time, or None if it is."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return 'auto-stop must be a number of seconds'
+    lo, hi = AUTO_STOP_S
+    if v != 0 and not lo <= v <= hi:
+        return 'auto-stop {:g} s is out of range ({}-{} s, or 0 for off)'.format(v, lo, hi)
+    return None
+
+
+COLOR_RANGE_M = (1.0, 40.0)      # allowed max colour distance (Mid-360: 40 m at 10 %)
+
+
+def color_range_error(value) -> Optional[str]:
+    """Why `value` (m) is not a usable max colour distance, or None if it is."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return 'color range must be a number'
+    lo, hi = COLOR_RANGE_M
+    if not lo <= v <= hi:      # also rejects NaN
+        return 'color range {:g} m is out of range ({:g}-{:g} m)'.format(v, lo, hi)
+    return None
+
+
 def _sec_to_time(t: float) -> Time:
     return Time(nanoseconds=int(round(t * 1e9)))
 
@@ -118,7 +148,7 @@ class ColorizerNode(Node):
         p('max_dt', 0.05)                # s, max scan-midpoint-to-image gap
         p('max_ang_rate', 30.0)          # deg/s, faster turns are not coloured
         p('min_range', 0.1)              # m
-        p('max_range', 40.0)             # m, camera depth
+        p('max_range', 10.0)             # m, farthest coloured point (set per recording)
         p('occl_cell', 4)                # px
         p('occl_tol', 0.10)              # m
         p('max_buffered_images', 30)
@@ -130,6 +160,7 @@ class ColorizerNode(Node):
         p('accumulate', False)           # start recording `map_name` at launch
         p('map_name', '')
         p('overwrite_existing', False)   # one-shot: next ~/start_map may replace a map
+        p('auto_stop_s', 0)              # one-shot: next ~/start_map stops + saves after this (0 = off)
         p('voxel', 0.03)                 # m, saved maps
         p('display_voxel', 0.10)         # m, live full map sent to viewers
         p('publish_period', 1.0)         # s, colored_map
@@ -153,6 +184,7 @@ class ColorizerNode(Node):
         self.max_wait = float(g('max_wait'))
         self.min_range = float(g('min_range'))
         self.max_range = float(g('max_range'))
+        self.default_color_range = self.max_range          # the UI's default
         self.occl_cell = int(g('occl_cell'))
         self.occl_tol = float(g('occl_tol'))
         self.static_gyro = float(g('static_gyro'))
@@ -197,6 +229,9 @@ class ColorizerNode(Node):
         self.rec_started: Optional[float] = None
         self.rec_scans = 0
         self.rec_height = None
+        self.rec_color_range = None
+        self.rec_auto_stop = 0               # s, 0 = stopped by hand
+        self.rec_stopped_by = None
         self.rec_T = None                    # frozen T_map_world
         self.rec_replaces = False            # recording will replace an existing map
         self.path = []                       # (t, x, y, z) of the lidar in the map frame
@@ -230,6 +265,7 @@ class ColorizerNode(Node):
         self.create_service(Trigger, '~/cancel_map', self._srv_cancel)
         self.create_service(Trigger, '~/save_cloud', self._srv_save)
         self.create_timer(0.5, self._publish_status)    # 2 Hz: the turn warning reacts fast
+        self.create_timer(0.25, self._check_auto_stop)
         self.create_timer(5.0, self._log_progress)
 
         self.get_logger().info(
@@ -307,6 +343,14 @@ class ColorizerNode(Node):
         height = float(self.get_parameter('lidar_height').value)
         if not 0.05 <= height <= 5.0:
             return False, 'lidar height {:.2f} m is out of range (0.05-5 m)'.format(height)
+        color_range = float(self.get_parameter('max_range').value)
+        err = color_range_error(color_range)
+        if err:
+            return False, err
+        auto_stop = int(self.get_parameter('auto_stop_s').value)
+        err = auto_stop_error(auto_stop)
+        if err:
+            return False, err
         try:
             T, still = self._estimate_map_frame(height)
         except ValueError as exc:
@@ -319,12 +363,16 @@ class ColorizerNode(Node):
         self.full = VoxelGrid(voxel=self.voxel)
         self.full_display = VoxelGrid(voxel=self.display_voxel)
         self.recording, self.map_name, self.rec_T, self.rec_height = True, name, T, height
+        self.max_range = self.rec_color_range = color_range   # fixed for this recording
+        self.rec_auto_stop, self.rec_stopped_by = auto_stop, None
         self.rec_replaces = exists       # the old map stays until this one is saved
         self.rec_started, self.rec_scans, self.path = time.time(), 0, []
         self._counts = (0, 0)
         self._too_fast_at_start = self.stats['too_fast']
-        return True, 'recording {!r} (lidar at {:.3f} m){}'.format(
-            name, height, ', will replace the existing map when saved' if exists else '')
+        return True, 'recording {!r} (lidar at {:.3f} m, colors up to {:g} m{}){}'.format(
+            name, height, color_range,
+            ', auto-stop after {} s'.format(auto_stop) if auto_stop else '',
+            ', will replace the existing map when saved' if exists else '')
 
     def save_map(self) -> str:
         """Write the map (map frame), each robot export, trajectory and info.
@@ -356,7 +404,10 @@ class ColorizerNode(Node):
             duration_s=round(time.time() - self.rec_started, 1),
             scans=self.rec_scans, colored_points=int(xyz_c.shape[0]),
             full_points=int(xyz_f.shape[0]), voxel_m=self.voxel,
-            lidar_height_m=self.rec_height, path_length_m=round(length, 2),
+            lidar_height_m=self.rec_height, color_range_m=self.rec_color_range,
+            auto_stop_s=self.rec_auto_stop or None,
+            stopped_by=self.rec_stopped_by or 'user',
+            path_length_m=round(length, 2),
             frame='map: gravity-levelled, floor z=0, origin below the start lidar, +X forward',
             exports=robot_list.describe(self.exports))
         with open(os.path.join(folder, 'info.json'), 'w') as fh:
@@ -388,8 +439,12 @@ class ColorizerNode(Node):
 
     def _on_set_parameters(self, params):
         """`exports_json` replaces the robot export list (from the UI), checked and
-        saved to output/robots.json. Every other parameter is accepted as is."""
+        saved to output/robots.json. `max_range` is fixed while recording (it is
+        checked and applied at Start). Every other parameter is accepted as is."""
         for prm in params:
+            if prm.name == 'max_range' and self.recording:
+                return SetParametersResult(
+                    successful=False, reason='the color range is fixed while recording')
             if prm.name != 'exports_json' or not prm.value:
                 continue
             if self.recording:
@@ -417,7 +472,23 @@ class ColorizerNode(Node):
         if overwrite:                                   # one-shot
             self.set_parameters([Parameter('overwrite_existing', Parameter.Type.BOOL, False)])
         response.success, response.message = self.start_map(name, overwrite)
+        if int(self.get_parameter('auto_stop_s').value):  # one-shot: read by start_map
+            self.set_parameters([Parameter('auto_stop_s', Parameter.Type.INTEGER, 0)])
         return response
+
+    def _check_auto_stop(self):
+        """Stop and save once the recording reaches its auto-stop time. Runs in
+        the colorizer, so it works with no browser open."""
+        if self.recording and self.rec_auto_stop and \
+                time.time() - self.rec_started >= self.rec_auto_stop:
+            self.rec_stopped_by = 'auto-stop'
+            name = self.map_name
+            try:
+                self.stop_map(save=True)
+                self.get_logger().info('auto-stop after {} s: saved {!r}'.format(
+                    self.rec_auto_stop, name))
+            except Exception as exc:                   # noqa: BLE001
+                self.get_logger().error('auto-stop save failed: {}'.format(exc))
 
     def _srv_stop(self, request, response):
         try:
@@ -636,6 +707,10 @@ class ColorizerNode(Node):
             lidar_height=float(self.get_parameter('lidar_height').value),
             default_lidar_height=self.default_height,
             rec_height=self.rec_height if self.recording else None,
+            color_range=float(self.get_parameter('max_range').value),
+            default_color_range=self.default_color_range,
+            rec_color_range=self.rec_color_range if self.recording else None,
+            auto_stop_s=self.rec_auto_stop if self.recording else 0,
             pose=self._pose(), path=[[round(float(x), 3), round(float(y), 3)] for x, y, _ in path],
             exports=self.exports, exports_source=self.exports_source,
             last_saved=self.last_saved, output_dir=self.output_dir)
@@ -675,6 +750,7 @@ def main(args=None):
         pass
     finally:
         if node.recording and node.get_parameter('save_on_shutdown').value:
+            node.rec_stopped_by = 'shutdown'
             try:
                 node.stop_map(save=True)
             except Exception as exc:                   # noqa: BLE001
