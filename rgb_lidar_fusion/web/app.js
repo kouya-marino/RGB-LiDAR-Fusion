@@ -341,13 +341,19 @@ function renderStatus() {
     : s.auto_stop_s ? `${fmtTime(s.elapsed_s) || '0:00'} / ${fmtTime(s.auto_stop_s)}` : fmtTime(s.elapsed_s);
   $('auto-note').textContent = s.recording && s.auto_stop_s
     ? `Auto-stop in ${fmtTime(Math.max(0, s.auto_stop_s - s.elapsed_s)) || '0:00'}: the map is saved then.` : '';
-  // a recording that ended without this page pressing Stop (auto-stop, another
-  // browser): show it and refresh the saved maps
-  if (state.wasRecording && !s.recording && s.connected && !state.busy) {
-    flash(s.last_saved ? `Map saved: ${s.last_saved}` : 'Recording ended.', 'ok');
-    loadMaps();
+  // how the last recording ended, as the colorizer reports it: shown once when
+  // it changes (auto-stop, a stop from another browser, a failed save)
+  if (s.connected) {
+    const end = s.last_end || null, t = end ? end.t : null;
+    if (state.lastEndT !== undefined && t !== state.lastEndT && end) {
+      const auto = end.by === 'auto-stop' ? ' (auto-stop)' : '';
+      if (end.result === 'saved') flash(`Map saved${auto}: ${end.name}`, 'ok');
+      else if (end.result === 'cancelled') flash('Recording discarded.', '');
+      else flash(`Saving ${end.name}${auto} failed: ${end.error || 'unknown error'}`, 'error');
+      loadMaps();
+    }
+    state.lastEndT = t;           // the first status only sets the baseline
   }
-  if (s.connected) state.wasRecording = !!s.recording;
 
   // default height = the colorizer's configured default, unless this browser
   // remembers the last one used or the user is typing
@@ -498,6 +504,8 @@ $('btn-start').addEventListener('click', async () => {
   }
   flash(r.message, r.ok ? 'ok' : 'error');
   if (r.ok) {
+    // a crop box fitted to the preview would hide the new map as you walk out of it
+    if ($('crop-on').checked) { $('crop-on').checked = false; updateClip(); }
     input.value = '';
     if (state.mode !== 'live') goLive(); else { clearClouds(); state.touched = false; }
   }
@@ -1006,6 +1014,9 @@ const COUNTDOWN_S = 15;
 function countdown(seconds) {
   return new Promise((resolve) => {
     const box = $('countdown');
+    // from a deadline, not by counting ticks: a busy or background tab fires
+    // timers late, and the count must not drift
+    const deadline = Date.now() + seconds * 1000;
     let left = seconds, timer = null;
     const show = () => {
       $('cd-num').textContent = left;
@@ -1031,7 +1042,11 @@ function countdown(seconds) {
     $('cd-now').onclick = () => done(true);
     document.addEventListener('keydown', onKey);
     $('cd-cancel').focus();
-    timer = setInterval(() => { left -= 1; if (left <= 0) done(true); else show(); }, 1000);
+    timer = setInterval(() => {
+      const now = Math.ceil((deadline - Date.now()) / 1000);
+      if (now <= 0) done(true);
+      else if (now !== left) { left = now; show(); }
+    }, 200);
   });
 }
 pollStatus();

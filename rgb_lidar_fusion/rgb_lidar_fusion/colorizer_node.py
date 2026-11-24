@@ -232,6 +232,7 @@ class ColorizerNode(Node):
         self.rec_color_range = None
         self.rec_auto_stop = 0               # s, 0 = stopped by hand
         self.rec_stopped_by = None
+        self.last_end = None                 # how the last recording ended (for the UI)
         self.rec_T = None                    # frozen T_map_world
         self.rec_replaces = False            # recording will replace an existing map
         self.path = []                       # (t, x, y, z) of the lidar in the map frame
@@ -426,9 +427,14 @@ class ColorizerNode(Node):
     def stop_map(self, save: bool = True):
         if not self.recording:
             return False, 'not recording'
-        name = self.map_name
+        name, by = self.map_name, self.rec_stopped_by or 'user'
         try:
             msg = 'saved {}'.format(self.save_map()) if save else 'cancelled {!r}'.format(name)
+            self.last_end = dict(name=name, result='saved' if save else 'cancelled', by=by,
+                                 t=time.time())
+        except Exception as exc:
+            self.last_end = dict(name=name, result='failed', by=by, error=str(exc), t=time.time())
+            raise
         finally:
             self.recording = False
         if not save and not self.rec_replaces:
@@ -439,12 +445,10 @@ class ColorizerNode(Node):
 
     def _on_set_parameters(self, params):
         """`exports_json` replaces the robot export list (from the UI), checked and
-        saved to output/robots.json. `max_range` is fixed while recording (it is
-        checked and applied at Start). Every other parameter is accepted as is."""
+        saved to output/robots.json. Every other parameter is accepted as is:
+        `max_range` and `auto_stop_s` are checked at Start and fixed for that
+        recording, so changing them mid-recording does nothing until the next."""
         for prm in params:
-            if prm.name == 'max_range' and self.recording:
-                return SetParametersResult(
-                    successful=False, reason='the color range is fixed while recording')
             if prm.name != 'exports_json' or not prm.value:
                 continue
             if self.recording:
@@ -713,7 +717,7 @@ class ColorizerNode(Node):
             auto_stop_s=self.rec_auto_stop if self.recording else 0,
             pose=self._pose(), path=[[round(float(x), 3), round(float(y), 3)] for x, y, _ in path],
             exports=self.exports, exports_source=self.exports_source,
-            last_saved=self.last_saved, output_dir=self.output_dir)
+            last_saved=self.last_saved, last_end=self.last_end, output_dir=self.output_dir)
 
     def _publish_status(self):
         self.status_pub.publish(String(data=json.dumps(self.status())))

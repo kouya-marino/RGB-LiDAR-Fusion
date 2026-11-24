@@ -80,9 +80,20 @@ def test_a_wider_range_keeps_far_points(node):
 
 def test_range_is_fixed_while_recording(node):
     assert node.start_map('fixed')[0]
-    res = _set(node, 5.0)
-    assert not res.successful and 'fixed while recording' in res.reason
-    assert node.max_range == 10.0
+    assert _set(node, 25.0).successful           # accepted, but only for the next recording
+    node._colorize(0.0, node.lidar_frame, TimeMsg(), _scan())
+    # the 10 m limit still applies (cut-off is 'closer than', so only the 2 m point)
+    assert node.max_range == 10.0 and node.acc.export()[0].shape[0] == 1
+
+
+def test_last_end_tells_saved_from_cancelled(node):
+    assert node.start_map('one')[0]
+    node.stop_map(save=False)
+    assert node.status()['last_end']['result'] == 'cancelled'
+    assert node.start_map('two')[0]
+    node.stop_map(save=True)
+    end = node.status()['last_end']
+    assert end['result'] == 'saved' and end['name'] == 'two' and end['by'] == 'user'
 
 
 def test_out_of_range_value_refuses_start(node):
@@ -117,6 +128,18 @@ def test_auto_stop_saves_on_time(node, tmp_path):
     assert not node.recording
     info = json.loads((tmp_path / 'timed' / 'info.json').read_text())
     assert info['auto_stop_s'] == 10 and info['stopped_by'] == 'auto-stop'
+    end = node.status()['last_end']
+    assert end['result'] == 'saved' and end['by'] == 'auto-stop' and end['name'] == 'timed'
+
+
+def test_failed_auto_stop_save_is_reported(node, monkeypatch):
+    assert _set_auto(node, 10).successful
+    assert node.start_map('broken')[0]
+    monkeypatch.setattr(node, 'save_map', lambda: (_ for _ in ()).throw(OSError('disk full')))
+    node.rec_started -= 11
+    node._check_auto_stop()
+    end = node.status()['last_end']
+    assert not node.recording and end['result'] == 'failed' and 'disk full' in end['error']
 
 
 def test_no_auto_stop_by_default(node, tmp_path):
