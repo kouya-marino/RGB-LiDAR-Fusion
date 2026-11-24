@@ -12,9 +12,13 @@ Serves one static page (Three.js, vendored) plus a small JSON/binary API:
   GET  /api/maps/<name>/files/[<robot>/]<file>
                                        download colored|full .pcd|.ply (map frame
                                        or a robot export), info.json, trajectory.csv
-  POST /api/start  {"name": "...", "lidar_height": 0.852, "overwrite": false}
+  POST /api/start  {"name": "...", "lidar_height": 0.852, "overwrite": false,
+                    "color_range": 10.0, "auto_stop_s": 0}
                                        start recording a map (overwrite: replace
-                                       an existing map of that name when saved)
+                                       an existing map of that name when saved;
+                                       color_range, optional: farthest point that
+                                       gets a color, m; auto_stop_s, optional:
+                                       stop and save after this many s, 0 = off)
   POST /api/maps/<name>/delete {"confirm": "<name>"}
                                        delete a saved map's folder (not while
                                        it is being recorded)
@@ -52,7 +56,8 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
 from rgb_lidar_fusion import robots as robot_list
-from rgb_lidar_fusion.colorizer_node import valid_map_name
+from rgb_lidar_fusion.colorizer_node import (
+    auto_stop_error, color_range_error, valid_map_name)
 from rgb_lidar_fusion.io_cloud import encode_xyzi, encode_xyzrgb, read_pcd, unpack_rgb
 from rgb_lidar_fusion.ros_conv import pointcloud2_field, pointcloud2_to_array, pointcloud2_to_xyz
 
@@ -179,12 +184,21 @@ class WebUiNode(Node):
             return False, 'colorizer did not answer'
         return True, future.result()
 
-    def start(self, name: str, lidar_height: float, overwrite: bool = False):
+    def start(self, name: str, lidar_height: float, overwrite: bool = False,
+              color_range: Optional[float] = None, auto_stop_s: int = 0):
         if not valid_map_name(name):
             return False, 'name must be 1-64 of A-Z a-z 0-9 _ -'
         if not 0.05 <= lidar_height <= 5.0:
             return False, 'lidar height must be 5-500 cm'
-        req = SetParameters.Request(parameters=[
+        if color_range is not None and color_range_error(color_range):
+            return False, color_range_error(color_range)
+        if auto_stop_error(auto_stop_s):
+            return False, auto_stop_error(auto_stop_s)
+        extra = [] if color_range is None else [Parameter(name='max_range', value=ParameterValue(
+            type=ParameterType.PARAMETER_DOUBLE, double_value=float(color_range)))]
+        extra.append(Parameter(name='auto_stop_s', value=ParameterValue(
+            type=ParameterType.PARAMETER_INTEGER, integer_value=int(auto_stop_s))))
+        req = SetParameters.Request(parameters=extra + [
             Parameter(name='map_name', value=ParameterValue(
                 type=ParameterType.PARAMETER_STRING, string_value=name)),
             Parameter(name='lidar_height', value=ParameterValue(
@@ -402,8 +416,22 @@ class _Handler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 return self._json({'ok': False, 'message': 'lidar_height must be a number'},
                                   HTTPStatus.BAD_REQUEST)
+            color_range = body.get('color_range')
+            if color_range is not None:
+                if isinstance(color_range, bool) or color_range_error(color_range):
+                    return self._json({'ok': False, 'message': color_range_error(color_range)
+                                       or 'color_range must be a number'},
+                                      HTTPStatus.BAD_REQUEST)
+                color_range = float(color_range)
+            auto_stop = body.get('auto_stop_s', 0)
+            # range first: it also rejects NaN / inf, which int() would raise on
+            if isinstance(auto_stop, bool) or not isinstance(auto_stop, (int, float)) or \
+                    auto_stop_error(auto_stop) or auto_stop != int(auto_stop):
+                return self._json({'ok': False, 'message': auto_stop_error(auto_stop)
+                                   or 'auto_stop_s must be a whole number of seconds'},
+                                  HTTPStatus.BAD_REQUEST)
             ok, msg = n.start(str(body.get('name', '')).strip(), height,
-                              body.get('overwrite') is True)
+                              body.get('overwrite') is True, color_range, int(auto_stop))
         elif path in ('/api/stop', '/api/cancel'):
             ok, msg = n.trigger(path.rsplit('/', 1)[1])
         elif path.startswith('/api/maps/') and path.endswith('/delete') and \
