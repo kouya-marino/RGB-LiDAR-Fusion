@@ -310,6 +310,11 @@ async function pollStatus() {
   setTimeout(pollStatus, 500);
 }
 
+// no image for longer than the colorizer's limit (null age: none yet)
+function cameraLost(s) {
+  return s.camera_age_s == null || s.camera_age_s > (s.camera_stale_s || 2);
+}
+
 function renderStatus() {
   const s = state.status || {};
   const pill = $('pill');
@@ -321,7 +326,8 @@ function renderStatus() {
     $('pill-text').textContent = `Recording · ${s.map_name}`;
   } else {
     pill.dataset.state = 'idle';
-    $('pill-text').textContent = s.camera_ok ? 'Ready' : 'Waiting for camera';
+    $('pill-text').textContent = !s.camera_ok ? 'Waiting for camera'
+      : cameraLost(s) ? 'Camera: no images' : 'Ready';
   }
   $('st-colored').textContent = s.recording ? fmtInt(s.colored_points) : '–';
   $('st-full').textContent = s.recording ? fmtInt(s.full_points) : '–';
@@ -377,10 +383,20 @@ function renderStatus() {
     $('turn-warn').textContent = `Turning too fast: ${Math.round(s.turn_rate_dps)}°/s ` +
       `(limit ${Math.round(s.max_turn_rate_dps)}°/s). Slow down, these scans are not colored.`;
   }
+  // camera lost (e.g. the USB link dropped): scans are mapped but not colored
+  const lost = s.connected && s.camera_ok && cameraLost(s);
+  $('cam-warn').hidden = !lost;
+  if (lost) {
+    $('cam-warn').textContent = `Camera: no images for ${Math.round(s.camera_age_s)} s. ` +
+      'Check the camera USB cable' + (s.recording ? '; scans are not colored meanwhile.' : '.');
+  }
+  const cl = s.recording && s.rec_camera_lost;
+  $('cam-note').textContent = cl && cl[0] > 0
+    ? `Camera lost ${cl[0]}× (${fmtTime(cl[1]) || '0:00'} in total): no color then` : '';
   $('fast-note').textContent = s.recording && s.rec_too_fast > 0
     ? `${fmtInt(s.rec_too_fast)} scans not colored (turning too fast)` : '';
   $('rd-odom').classList.toggle('ok', !!s.odometry_ok);
-  $('rd-cam').classList.toggle('ok', !!s.camera_ok);
+  $('rd-cam').classList.toggle('ok', !!s.camera_ok && !cameraLost(s));
   $('rd-still').classList.toggle('ok', !!s.still);
   syncRobots(s);
   const ex = s.exports || [];

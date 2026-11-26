@@ -9,6 +9,7 @@ colorizer:
     time_offset: 0.0
     max_dt: 0.05
     max_wait: 0.3             # s, a scan waits this long for an image after its midpoint
+    camera_stale_s: 2.0       # s without an image: the UI warns that the camera is lost
     max_ang_rate: 30.0        # deg/s, faster turns are not coloured (still mapped)
     min_range: 0.1
     max_range: 10.0           # m, farthest point that gets a color: the UI's default (1-40 m).
