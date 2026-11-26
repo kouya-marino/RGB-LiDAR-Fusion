@@ -198,7 +198,7 @@ output/<name>/
 | | |
 |---|---|
 | `/colored_scan`, `/lidar_scan` | Each scan in the `map` frame: colored points (only what the camera sees) / all points with intensity, 10 Hz |
-| `/colored_map`, `/lidar_map` | The growing maps while recording (1 s / 2 s; the live full map is thinned to 10 cm) |
+| `/colored_map`, `/lidar_map` | The growing maps while recording, for viewing (1 s / 2 s; thinned to 5 cm / 10 cm, `display_color_voxel` / `display_voxel`; saved maps keep 3 cm) |
 | TF `map → camera_init` | The levelled map frame on top of FAST-LIO's world frame |
 | `/colorizer/status` | JSON status, 2 Hz |
 | `/colorizer/start_map`, `stop_map`, `cancel_map`, `save_cloud` | `std_srvs/Trigger`; name, height and color distance come from the `map_name`, `lidar_height` and `max_range` parameters; `auto_stop_s` (one-shot, 0 = off) stops and saves after that many seconds |
