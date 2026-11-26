@@ -163,6 +163,7 @@ class ColorizerNode(Node):
         p('auto_stop_s', 0)              # one-shot: next ~/start_map stops + saves after this (0 = off)
         p('voxel', 0.03)                 # m, saved maps
         p('display_voxel', 0.10)         # m, live full map sent to viewers
+        p('display_color_voxel', 0.05)   # m, live colored map sent to viewers
         p('publish_period', 1.0)         # s, colored_map
         p('full_publish_period', 2.0)    # s, lidar_map
         p('output_dir', os.path.join(os.getcwd(), 'output'))
@@ -192,6 +193,7 @@ class ColorizerNode(Node):
         self.voxel = float(g('voxel'))
         self.default_height = float(g('lidar_height'))   # the UI's default
         self.display_voxel = float(g('display_voxel'))
+        self.display_color_voxel = float(g('display_color_voxel'))
         self.publish_period = float(g('publish_period'))
         self.full_publish_period = float(g('full_publish_period'))
         self.output_dir = str(g('output_dir'))
@@ -238,8 +240,10 @@ class ColorizerNode(Node):
         self.path = []                       # (t, x, y, z) of the lidar in the map frame
         self.last_saved: Optional[str] = None
         self.acc = Accumulator(voxel=self.voxel)
+        self.acc_display = Accumulator(voxel=self.display_color_voxel)
         self.full = VoxelGrid(voxel=self.voxel)
         self.full_display = VoxelGrid(voxel=self.display_voxel)
+        self._reset_recording_stats()
 
         self.tf_buffer = Buffer(cache_time=Duration(seconds=30))
         # own thread: lookups at an image's timestamp may need TF that is
@@ -361,8 +365,10 @@ class ColorizerNode(Node):
         if not still:
             return False, 'hold the rig still for a second, then press Start again'
         self.acc = Accumulator(voxel=self.voxel)
+        self.acc_display = Accumulator(voxel=self.display_color_voxel)
         self.full = VoxelGrid(voxel=self.voxel)
         self.full_display = VoxelGrid(voxel=self.display_voxel)
+        self._reset_recording_stats()
         self.recording, self.map_name, self.rec_T, self.rec_height = True, name, T, height
         self.max_range = self.rec_color_range = color_range   # fixed for this recording
         self.rec_auto_stop, self.rec_stopped_by = auto_stop, None
@@ -410,7 +416,8 @@ class ColorizerNode(Node):
             stopped_by=self.rec_stopped_by or 'user',
             path_length_m=round(length, 2),
             frame='map: gravity-levelled, floor z=0, origin below the start lidar, +X forward',
-            exports=robot_list.describe(self.exports))
+            exports=robot_list.describe(self.exports),
+            stats=self.recording_stats())
         with open(os.path.join(folder, 'info.json'), 'w') as fh:
             json.dump(info, fh, indent=2)
         if os.path.exists(final):
@@ -529,12 +536,32 @@ class ColorizerNode(Node):
         a, w = msg.linear_acceleration, msg.angular_velocity
         self._imu.append((stamp_to_sec(msg.header.stamp), (a.x, a.y, a.z), (w.x, w.y, w.z)))
 
+    # Every callback runs on this node's one thread, so a slow one delays the
+    # rest; while recording their durations go into info.json ("stats").
     def _on_image(self, msg: Image):
+        t0 = time.perf_counter()
+        try:
+            self._handle_image(msg)
+        finally:
+            self._time_callback('image', t0)
+
+    def _on_cloud(self, msg: PointCloud2):
+        t0 = time.perf_counter()
+        try:
+            self._handle_cloud(msg)
+        finally:
+            self._time_callback('cloud', t0)
+
+    def _time_callback(self, kind: str, t0: float):
+        if self.recording:
+            self._rec_callback_s[kind].append(time.perf_counter() - t0)
+
+    def _handle_image(self, msg: Image):
         self.stats['images_rx'] += 1
         self._images.append((stamp_to_sec(msg.header.stamp) + self.time_offset, msg))
         self._process_ready()
 
-    def _on_cloud(self, msg: PointCloud2):
+    def _handle_cloud(self, msg: PointCloud2):
         self.stats['scans'] += 1
         self._world = msg.header.frame_id
         xyz = pointcloud2_to_xyz(msg)
@@ -560,6 +587,7 @@ class ColorizerNode(Node):
                                                         msg.header.stamp))
             if self.recording:
                 self.rec_scans += 1
+                self._rec_stamps.append(stamp_to_sec(msg.header.stamp))
                 self.full.add(pts_map, inten)
                 self.full_display.add(pts_map, inten)
                 T_wl = self._lookup(self._world, self.lidar_frame)
@@ -644,25 +672,60 @@ class ColorizerNode(Node):
         if self.recording:
             quality = view_quality(pts_cam, uv, self.cam, max_range=self.max_range)
             self.acc.add(pts_map, rgb, quality)
+            self.acc_display.add(pts_map, rgb, quality)
 
     def _maybe_publish_maps(self):
-        """Republish the maps at their own rates; built only if someone listens."""
+        """Republish the live maps at their own rates, only if someone listens.
+
+        Both are display copies on a coarser grid (display_color_voxel,
+        display_voxel); the saved maps keep `voxel`. Sending the full-resolution
+        colored map every second (2 M points late in a long walk) and counting
+        the full map exactly used to stall this thread for longer than the scan
+        period, so long recordings lost most of their scans."""
         now = time.monotonic()
-        stamp = None
         if now - self._last_map_pub >= self.publish_period:
-            self._last_map_pub = now
-            stamp = self.get_clock().now().to_msg()
-            xyz, rgb = self.acc.export()
-            self._counts = (xyz.shape[0], self._counts[1])
+            self._counts = (self.acc.approx_count, self.full.approx_count)
             if self.map_pub.get_subscription_count():
-                self.map_pub.publish(xyzrgb_to_msg(xyz, rgb, self.map_frame, stamp))
+                xyz, rgb = self.acc_display.export()
+                self.map_pub.publish(xyzrgb_to_msg(xyz, rgb, self.map_frame,
+                                                   self.get_clock().now().to_msg()))
+            self._last_map_pub = time.monotonic()
         if now - self._last_full_pub >= self.full_publish_period:
-            self._last_full_pub = now
-            stamp = stamp or self.get_clock().now().to_msg()
-            self._counts = (self._counts[0], self.full.count)
             if self.full_pub.get_subscription_count():
                 xyz, inten = self.full_display.export()
-                self.full_pub.publish(xyzi_to_msg(xyz, inten, self.map_frame, stamp))
+                self.full_pub.publish(xyzi_to_msg(xyz, inten, self.map_frame,
+                                                  self.get_clock().now().to_msg()))
+            self._last_full_pub = time.monotonic()
+
+    def _reset_recording_stats(self):
+        self._stats_at_start = dict(self.stats)
+        self._rec_stamps = []                            # stamps of the scans mapped
+        self._rec_callback_s = dict(cloud=[], image=[])  # callback durations (s)
+
+    def recording_stats(self) -> dict:
+        """What this recording received and did, for info.json: scans expected
+        from the scan stamps vs received, scans coloured and why the others were
+        not, and how long the callbacks took (a slow callback delays the next
+        scans and images, which then queue up or are dropped)."""
+        d = {k: v - self._stats_at_start.get(k, 0) for k, v in self.stats.items()}
+        st = np.asarray(self._rec_stamps)
+        period = float(np.median(np.diff(st))) if st.size > 2 else None
+        expected = int(round((st[-1] - st[0]) / period)) + 1 if period else int(st.size)
+
+        def summary(v):
+            ms = np.asarray(v) * 1e3
+            return dict(n=int(ms.size), p50=round(float(np.percentile(ms, 50)), 1),
+                        p95=round(float(np.percentile(ms, 95)), 1),
+                        p99=round(float(np.percentile(ms, 99)), 1),
+                        max=round(float(ms.max()), 1))
+        return dict(
+            scans_received=int(st.size), scans_expected=expected,
+            scan_period_s=round(period, 4) if period else None,
+            scans_colored=d['coloured'], images_received=d['images_rx'],
+            not_colored=dict(image_too_far_in_time=d['dt_too_big'],
+                             turning_too_fast=d['too_fast'], no_tf=d['no_tf'],
+                             no_image=d['no_image'], nothing_in_view=d['empty']),
+            callback_ms={k: summary(v) for k, v in self._rec_callback_s.items() if v})
 
     # --- reporting ------------------------------------------------------
 

@@ -25,6 +25,7 @@ colorizer:
     map_name: ''              # '' -> map_YYYYmmdd_HHMMSS
     voxel: 0.03               # m, saved maps
     display_voxel: 0.10       # m, live full map sent to viewers
+    display_color_voxel: 0.05 # m, live colored map sent to viewers (saved maps keep `voxel`)
     publish_period: 1.0       # s, colored_map
     full_publish_period: 2.0  # s, lidar_map
     image_queue: 5            # images held while busy (~6 MB each at 1080p)

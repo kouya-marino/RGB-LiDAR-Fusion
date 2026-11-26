@@ -170,3 +170,103 @@ def test_voxelgrid_empty_export():
     from rgb_lidar_fusion.fusion import VoxelGrid
     xyz, inten = VoxelGrid().export()
     assert xyz.shape == (0, 3) and inten.shape == (0,)
+
+
+# --- incremental compaction == the original full re-sort --------------------
+# The maps used to be re-sorted whole at every compaction, which made long
+# recordings slow down as the map grew. The merge that replaced it must pick
+# exactly the same winners, in the same order. These references are the
+# original implementations.
+
+def _reference_accumulator(batches, voxel):
+    from rgb_lidar_fusion.fusion import _OFFSET, Accumulator as A
+    keys = np.zeros(0, np.int64)
+    xyz = np.zeros((0, 3), np.float32)
+    rgb = np.zeros((0, 3), np.uint8)
+    q = np.zeros(0, np.float32)
+    for pts, col, qual, compact in batches:
+        idx = np.floor(pts / voxel).astype(np.int64)
+        ok = np.all((idx >= -_OFFSET) & (idx < _OFFSET), axis=1)
+        keys = np.concatenate([keys, A._pack(idx[ok])])
+        xyz = np.concatenate([xyz, pts[ok].astype(np.float32)])
+        rgb = np.concatenate([rgb, col[ok]])
+        q = np.concatenate([q, qual[ok]])
+        if compact:
+            order = np.lexsort((-q, keys))
+            _, first = np.unique(keys[order], return_index=True)
+            w = order[first]
+            keys, xyz, rgb, q = keys[w], xyz[w], rgb[w], q[w]
+    order = np.lexsort((-q, keys))
+    _, first = np.unique(keys[order], return_index=True)
+    w = order[first]
+    return xyz[w], rgb[w]
+
+
+def _reference_voxelgrid(batches, voxel):
+    from rgb_lidar_fusion.fusion import Accumulator as A
+    keys = np.zeros(0, np.int64)
+    xyz = np.zeros((0, 3), np.float32)
+    inten = np.zeros(0, np.float32)
+    for pts, i, compact in batches:
+        keys = np.concatenate([keys, A._pack(np.floor(pts / voxel).astype(np.int64))])
+        xyz = np.concatenate([xyz, pts.astype(np.float32)])
+        inten = np.concatenate([inten, i])
+        if compact:
+            _, first = np.unique(keys, return_index=True)
+            keys, xyz, inten = keys[first], xyz[first], inten[first]
+    _, first = np.unique(keys, return_index=True)
+    return xyz[first], inten[first]
+
+
+def _batches(rng, n_batches, n, coarse_quality):
+    """Overlapping batches; coarse qualities make exact ties common (view_quality
+    returns 0 beyond max_range, so ties happen in real recordings too)."""
+    out = []
+    for b in range(n_batches):
+        pts = rng.uniform(-1.0, 1.0, (n, 3))
+        col = rng.integers(0, 256, (n, 3), dtype=np.uint8)
+        q = rng.integers(0, 3, n).astype(np.float32) / 2 if coarse_quality \
+            else rng.random(n).astype(np.float32)
+        out.append((pts, col, q, b % 3 == 2))          # compact every third batch
+    return out
+
+
+@pytest.mark.parametrize('coarse_quality', [False, True])
+def test_incremental_accumulator_matches_full_resort(coarse_quality):
+    rng = np.random.default_rng(7)
+    batches = _batches(rng, 12, 4000, coarse_quality)
+    acc = Accumulator(voxel=0.05)
+    for pts, col, q, compact in batches:
+        acc.add(pts, col, q)
+        if compact:
+            acc.count                                     # forces a compaction
+    xyz, rgb = acc.export()
+    ref_xyz, ref_rgb = _reference_accumulator(batches, 0.05)
+    np.testing.assert_array_equal(xyz, ref_xyz)
+    np.testing.assert_array_equal(rgb, ref_rgb)
+
+
+def test_incremental_voxelgrid_matches_full_resort():
+    from rgb_lidar_fusion.fusion import VoxelGrid
+    rng = np.random.default_rng(11)
+    batches = [(rng.uniform(-1.0, 1.0, (4000, 3)), rng.random(4000).astype(np.float32),
+                b % 3 == 2) for b in range(12)]
+    g = VoxelGrid(voxel=0.05)
+    for pts, i, compact in batches:
+        g.add(pts, i)
+        if compact:
+            g.count
+    xyz, inten = g.export()
+    ref_xyz, ref_i = _reference_voxelgrid(batches, 0.05)
+    np.testing.assert_array_equal(xyz, ref_xyz)
+    np.testing.assert_array_equal(inten, ref_i)
+
+
+def test_equal_quality_keeps_the_stored_view():
+    acc = Accumulator(voxel=0.1)
+    acc.add(np.array([[0.01, 0.01, 0.01]]), np.array([[10, 10, 10]]), np.array([0.5]))
+    acc.count
+    acc.add(np.array([[0.02, 0.02, 0.02]]), np.array([[99, 99, 99]]), np.array([0.5]))
+    xyz, rgb = acc.export()
+    assert rgb.tolist() == [[10, 10, 10]]
+    np.testing.assert_allclose(xyz, [[0.01, 0.01, 0.01]], atol=1e-6)
