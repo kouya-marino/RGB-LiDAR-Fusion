@@ -182,3 +182,9 @@ if hasattr(node, 'recording_stats'):
     st = node.recording_stats()
     print('recording_stats:', {k: st[k] for k in ('scans_received', 'scans_expected', 'scan_period_s')},
           'cloud callback_ms', st['callback_ms'].get('cloud'))
+
+# without this, the node's TF listener thread keeps Python from exiting
+ex.shutdown()
+viewer.destroy_node()
+node.destroy_node()
+rclpy.shutdown()
