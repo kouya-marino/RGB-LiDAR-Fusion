@@ -1,0 +1,29 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    container: ros:humble-ros-base
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install test dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            python3-pytest python3-numpy python3-opencv python3-yaml
+      - name: Run tests
+        working-directory: rgb_lidar_fusion
+        run: |
+          source /opt/ros/humble/setup.bash
+          PYTHONPATH="$PWD:$PYTHONPATH" python3 -m pytest -q -rs test
