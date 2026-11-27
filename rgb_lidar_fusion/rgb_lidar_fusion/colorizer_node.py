@@ -154,6 +154,7 @@ class ColorizerNode(Node):
         p('max_buffered_images', 30)
         p('image_queue', 5)
         p('max_wait', 0.3)               # s, how long a scan may wait for its image
+        p('camera_stale_s', 2.0)         # s without an image = camera lost (UI warning)
         p('lidar_height', 0.852)         # m, lidar origin above the floor at Start
         p('static_gyro', 0.05)           # rad/s, "held still" threshold for Start
         p('level_window', 1.0)           # s of IMU averaged for gravity
@@ -189,6 +190,8 @@ class ColorizerNode(Node):
         self.occl_cell = int(g('occl_cell'))
         self.occl_tol = float(g('occl_tol'))
         self.static_gyro = float(g('static_gyro'))
+        self.camera_stale_s = float(g('camera_stale_s'))
+        self._last_image_mono: Optional[float] = None   # monotonic arrival of the last image
         self.level_window = float(g('level_window'))
         self.voxel = float(g('voxel'))
         self.default_height = float(g('lidar_height'))   # the UI's default
@@ -558,6 +561,12 @@ class ColorizerNode(Node):
 
     def _handle_image(self, msg: Image):
         self.stats['images_rx'] += 1
+        now = time.monotonic()
+        if self.recording:
+            gap = self._open_camera_gap(now)
+            if gap is not None:                      # the camera is back after a loss
+                self._rec_cam_gaps.append(gap)
+        self._last_image_mono = now
         self._images.append((stamp_to_sec(msg.header.stamp) + self.time_offset, msg))
         self._process_ready()
 
@@ -701,6 +710,23 @@ class ColorizerNode(Node):
         self._stats_at_start = dict(self.stats)
         self._rec_stamps = []                            # stamps of the scans mapped
         self._rec_callback_s = dict(cloud=[], image=[])  # callback durations (s)
+        self._rec_t0 = time.monotonic()
+        self._rec_cam_gaps = []                          # (start, length) s, camera lost
+
+    def _open_camera_gap(self, now: float):
+        """(start, length) in s since the recording started, if no image has
+        arrived for longer than `camera_stale_s` (e.g. the USB link dropped)."""
+        last = self._last_image_mono
+        start = self._rec_t0 if last is None else max(last, self._rec_t0)
+        if now - start <= self.camera_stale_s or (last is not None and now - last <= self.camera_stale_s):
+            return None
+        return (round(start - self._rec_t0, 1), round(now - start, 1))
+
+    def _camera_gaps(self) -> list:
+        """Camera losses this recording, including one still going on."""
+        gaps = list(self._rec_cam_gaps)
+        open_gap = self._open_camera_gap(time.monotonic())
+        return gaps + [open_gap] if open_gap is not None else gaps
 
     def recording_stats(self) -> dict:
         """What this recording received and did, for info.json: scans expected
@@ -718,6 +744,7 @@ class ColorizerNode(Node):
                         p95=round(float(np.percentile(ms, 95)), 1),
                         p99=round(float(np.percentile(ms, 99)), 1),
                         max=round(float(ms.max()), 1))
+        cam_gaps = self._camera_gaps()
         return dict(
             scans_received=int(st.size), scans_expected=expected,
             scan_period_s=round(period, 4) if period else None,
@@ -725,7 +752,9 @@ class ColorizerNode(Node):
             not_colored=dict(image_too_far_in_time=d['dt_too_big'],
                              turning_too_fast=d['too_fast'], no_tf=d['no_tf'],
                              no_image=d['no_image'], nothing_in_view=d['empty']),
-            callback_ms={k: summary(v) for k, v in self._rec_callback_s.items() if v})
+            callback_ms={k: summary(v) for k, v in self._rec_callback_s.items() if v},
+            camera_lost=dict(times=len(cam_gaps), total_s=round(sum(g[1] for g in cam_gaps), 1),
+                             gaps_s=[list(g) for g in cam_gaps]))
 
     # --- reporting ------------------------------------------------------
 
@@ -757,6 +786,7 @@ class ColorizerNode(Node):
         path = thin_path(np.array([r[1:] for r in self.path])) \
             if self.recording and self.path else np.zeros((0, 3))
         path = path[::max(1, len(path) // 500)]
+        gaps = self._camera_gaps() if self.recording else []
         return dict(
             recording=self.recording, map_name=self.map_name,
             elapsed_s=round(time.time() - self.rec_started, 1) if self.recording else 0.0,
@@ -768,6 +798,10 @@ class ColorizerNode(Node):
             turn_rate_dps=round(self.turn_rate(), 1),
             max_turn_rate_dps=round(float(np.degrees(self.max_ang_rate)), 1),
             camera_ok=self.cam is not None,
+            camera_age_s=None if self._last_image_mono is None
+            else round(time.monotonic() - self._last_image_mono, 1),
+            camera_stale_s=self.camera_stale_s,
+            rec_camera_lost=[len(gaps), round(sum(g[1] for g in gaps), 1)] if self.recording else None,
             odometry_ok=self._world is not None and
             self._lookup(self._world, self.lidar_frame) is not None,
             imu_ok=acc is not None and len(acc) > 20, still=bool(still),

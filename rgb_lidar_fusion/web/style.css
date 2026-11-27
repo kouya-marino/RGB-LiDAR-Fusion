@@ -268,7 +268,10 @@ input[type="number"].nondefault { border-color: var(--warn); box-shadow: 0 0 0 1
   border: 1px solid var(--rec); color: #ffd7d5;
   box-shadow: 0 4px 18px rgba(0, 0, 0, .35);
 }
-#fast-note:empty, #auto-note:empty { display: none; }
+#fast-note:empty, #auto-note:empty, #cam-note:empty { display: none; }
+/* below the turn warning when both show */
+.cam-warn { top: 58px; }
+.turn-warn[hidden] + .cam-warn { top: 12px; }
 .inline-num { display: flex; align-items: center; gap: 8px; }
 .inline-num input { max-width: 120px; }
 .inline-num input:disabled { opacity: .45; }

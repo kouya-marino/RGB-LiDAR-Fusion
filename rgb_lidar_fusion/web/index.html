@@ -63,6 +63,7 @@
           <div class="rec-name"><span class="rec-dot live"></span><span id="rec-name"></span></div>
           <p class="hint small" id="auto-note"></p>
           <p class="hint small" id="fast-note"></p>
+          <p class="hint small warn-text" id="cam-note"></p>
           <div class="row">
             <button class="btn primary" id="btn-stop">Stop &amp; save</button>
             <button class="btn ghost danger" id="btn-cancel">Cancel</button>
@@ -140,6 +141,7 @@
       </div>
       <div class="overlay" id="overlay" hidden><p id="overlay-text"></p></div>
       <div class="turn-warn" id="turn-warn" role="alert" hidden></div>
+      <div class="turn-warn cam-warn" id="cam-warn" role="alert" hidden></div>
       <div class="countdown" id="countdown" role="timer" aria-live="assertive" hidden>
         <div class="cd-box">
           <div class="cd-text" id="cd-text">Recording starts in</div>
