@@ -262,7 +262,7 @@ If you use RGB-LiDAR-Fusion in your work, please cite it (GitHub's **Cite this r
   title  = {{RGB-LiDAR-Fusion}: Real-time colorized 3D mapping with a Livox Mid-360 and an RGB camera},
   url    = {https://github.com/kouya-marino/RGB-LiDAR-Fusion},
   year   = {2026},
-  version = {0.1.0}
+  version = {0.2.0}
 }
 ```
 

@@ -5,10 +5,11 @@ type: software
 authors:
   - family-names: Rawat
     given-names: Prashant
+    orcid: "https://orcid.org/0009-0000-0850-3364"
 repository-code: "https://github.com/kouya-marino/RGB-LiDAR-Fusion"
 license: MIT
-version: 0.1.0
-date-released: 2026-11-12
+version: 0.2.0
+date-released: 2026-11-27
 keywords:
   - lidar
   - camera
