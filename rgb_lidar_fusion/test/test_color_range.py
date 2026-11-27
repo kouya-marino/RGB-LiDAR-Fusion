@@ -1,6 +1,8 @@
 """The max colour distance (`max_range`): set per recording, applied to the points
 that actually get coloured, refused while recording, and saved in info.json."""
+import copy
 import json
+import time
 from collections import deque
 
 import numpy as np
@@ -84,6 +86,18 @@ def test_range_is_fixed_while_recording(node):
     node._colorize(0.0, node.lidar_frame, TimeMsg(), _scan())
     # the 10 m limit still applies (cut-off is 'closer than', so only the 2 m point)
     assert node.max_range == 10.0 and node.acc.export()[0].shape[0] == 1
+
+
+def test_scan_waiting_at_start_is_not_recorded(node):
+    """A scan received before Start and still waiting for its image is not
+    part of the recording: no colors from it, and not counted as colored."""
+    node._pending.append((5.0, time.monotonic(), node.lidar_frame, TimeMsg(), _scan()))
+    assert node.start_map('fresh')[0]
+    img = copy.deepcopy(node._images[0][1])
+    img.header.stamp.sec = 5                     # the image the scan was waiting for
+    node._handle_image(img)
+    assert node.acc.export()[0].shape[0] == 0
+    assert node.recording_stats()['scans_colored'] == 0
 
 
 def test_last_end_tells_saved_from_cancelled(node):

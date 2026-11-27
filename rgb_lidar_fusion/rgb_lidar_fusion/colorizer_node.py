@@ -371,6 +371,9 @@ class ColorizerNode(Node):
         self.acc_display = Accumulator(voxel=self.display_color_voxel)
         self.full = VoxelGrid(voxel=self.voxel)
         self.full_display = VoxelGrid(voxel=self.display_voxel)
+        # a scan still waiting for its image was received before Start: it is
+        # not in the full map, so it must not add colors or count as colored
+        self._pending.clear()
         self._reset_recording_stats()
         self.recording, self.map_name, self.rec_T, self.rec_height = True, name, T, height
         self.max_range = self.rec_color_range = color_range   # fixed for this recording
