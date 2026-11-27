@@ -82,7 +82,7 @@ body {
   padding: 14px;
   display: flex; flex-direction: column; gap: 10px;
 }
-.card.grow { flex: 1; min-height: 160px; }
+.card.grow { flex: 1 0 auto; min-height: 160px; }   /* fill spare height, never squash the list */
 .card h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .3px; }
 .card-head { display: flex; align-items: center; justify-content: space-between; }
 .hint { margin: 0; color: var(--muted); font-size: 12.5px; }
