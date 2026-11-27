@@ -155,6 +155,8 @@ ros2 launch rgb_lidar_fusion colorize.launch.py output_dir:=/ws/src/rgb_lidar_fu
 
 This starts the sensors, the colorizer and the web UI. Open **http://localhost:8080** (or `http://<this-pc>:8080` from another machine on the network).
 
+To stop, press **Ctrl+C** in the launch terminal; a map that is still recording is saved first.
+
 ### Web UI
 
 | | |
