@@ -35,7 +35,7 @@ Then open **http://localhost:8080**. First time? Set up the lidar's network as i
 
 ## Demo
 
-**A whole floor**, mapped by walking 152 m in 13 min with the rig held up (lidar at 1.73 m):
+**A whole floor**, mapped by walking 159 m in 14 min with the rig carried on a pole (lidar at about 1.55 m):
 
 <p align="center">
   <img src="docs/images/demo_full_room.gif" alt="A whole building floor in three synchronized views: lidar and camera combined, camera-colored points only, full lidar colored by height" width="900">
@@ -48,7 +48,7 @@ Then open **http://localhost:8080**. First time? Set up the lidar's network as i
   <img src="docs/images/full_room_oblique.jpg" alt="Oblique view of the whole floor with camera colors inside the lidar map, ceiling hidden" width="640">
 </p>
 
-The views, left to right: camera colors inside the full lidar map, only the camera-colored points, and the full lidar map colored by height with the walked path (red). The colored cloud was cleaned of stray points in a point cloud editor after saving; the full lidar map is as recorded. The data is in [`examples/room_sample/`](examples/room_sample/).
+The views, left to right: camera colors inside the full lidar map, only the camera-colored points, and the full lidar map colored by height with the walked path (red). Both clouds were cleaned of stray points in a point cloud editor after saving (points deleted only). The data is in [`examples/full_floor_sample/`](examples/full_floor_sample/).
 
 **One area**, turning the rig in place:
 
@@ -256,7 +256,7 @@ Keep the rig still, facing objects with clear outlines 2–4 m away. The tool ke
 
 ## Example output
 
-Two sample maps, each with the colored and the full cloud: a whole floor in [`examples/room_sample/`](examples/room_sample/) (`.ply`) and one area in [`examples/partial_floor_sample/`](examples/partial_floor_sample/) (`.pcd` and `.ply`); see [`examples/README.md`](examples/README.md) for how to open it.
+Two sample maps, each with the colored and the full cloud: a whole floor in [`examples/full_floor_sample/`](examples/full_floor_sample/) and one area in [`examples/partial_floor_sample/`](examples/partial_floor_sample/), both as `.pcd` and `.ply`; see [`examples/README.md`](examples/README.md) for how to open them.
 
 ## Roadmap
 

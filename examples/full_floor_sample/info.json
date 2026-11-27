@@ -1,0 +1,60 @@
+{
+  "name": "full_floor_sample",
+  "started": "2026-11-27T09:04:06+09:00",
+  "duration_s": 839.5,
+  "scans": 7848,
+  "voxel_m": 0.03,
+  "lidar_height_m": 1.55,
+  "color_range_m": 7.0,
+  "path_length_m": 159.2,
+  "frame": "map: gravity-levelled, floor z=0, origin below the start lidar, +X forward",
+  "colored_points": 732170,
+  "colored_voxel_m": 0.05,
+  "full_points": 404765,
+  "full_voxel_m": 0.1,
+  "saved_points": {
+    "colored": 2279491,
+    "full": 5916695
+  },
+  "cleaned_points": {
+    "colored": 2181113,
+    "full": 5836602
+  },
+  "notes": "Cleaned in a point cloud editor (points seen through windows and stray points deleted; no point moved or recolored), then thinned for the repo to one point per 5 cm (colored) and 10 cm (full) voxel. duration_s and stats.camera_lost are corrected: this map was saved by a version that measured them after writing the files (fixed in v0.2.0).",
+  "exports": [],
+  "stats": {
+    "scans_received": 7848,
+    "scans_expected": 8396,
+    "scan_period_s": 0.1,
+    "scans_colored": 7242,
+    "images_received": 11334,
+    "not_colored": {
+      "image_too_far_in_time": 450,
+      "turning_too_fast": 148,
+      "no_tf": 0,
+      "no_image": 0,
+      "nothing_in_view": 8
+    },
+    "callback_ms": {
+      "cloud": {
+        "n": 7848,
+        "p50": 7.6,
+        "p95": 65.5,
+        "p99": 175.0,
+        "max": 655.2
+      },
+      "image": {
+        "n": 11334,
+        "p50": 3.5,
+        "p95": 5.0,
+        "p99": 6.4,
+        "max": 47.9
+      }
+    },
+    "camera_lost": {
+      "times": 0,
+      "total_s": 0.0,
+      "gaps_s": []
+    }
+  }
+}

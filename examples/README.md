@@ -2,25 +2,28 @@
 
 | Sample | Recording | Size |
 |---|---|---|
-| [`room_sample/`](room_sample/) | a whole building floor, walking 152 m in 13 min | 18 MB, `.ply` only |
+| [`full_floor_sample/`](full_floor_sample/) | a whole building floor, walking 159 m in 14 min | 35 MB, `.pcd` and `.ply` |
 | [`partial_floor_sample/`](partial_floor_sample/) | one area, turning in place for 27 s | 4 MB, `.pcd` and `.ply` |
 
 Both are in the map frame: gravity-levelled, **floor at z = 0**, origin on the floor below the lidar where recording started, +X the direction the rig faced.
 
 **View them:**
-- In the web UI (it reads `.pcd`, so `partial_floor_sample`): `cp -r examples/partial_floor_sample output/` and open `http://localhost:8080/?map=partial_floor_sample`. *Hide above* in Layers cuts away the ceiling.
+- In the web UI (it reads `.pcd`): `cp -r examples/full_floor_sample output/` and open `http://localhost:8080/?map=full_floor_sample` (the same for `partial_floor_sample`). *Hide above* in Layers cuts away the ceiling.
 - In CloudCompare, MeshLab or Open3D: open the `.ply` files.
-- On ROS 1: see [`ros1/`](../ros1/) (it publishes `.pcd` files, so use `partial_floor_sample` or your own saved maps).
+- On ROS 1: see [`ros1/`](../ros1/) (it publishes `.pcd` files).
 
-## `room_sample/`
+## `full_floor_sample/`
 
-A whole building floor, recorded with the rig held up (lidar 1.73 m above the floor) while walking through the rooms and corridors: 12.8 min, 152 m, 3,933 scans.
+The *Full-floor* sequence of the paper: a whole building floor, recorded with the rig carried on a pole (lidar 1.55 m above the floor at the start, 1.51–1.85 m while walking) through the rooms and corridors: 14.0 min, 159 m, 7,848 scans, 92% of them colored.
 
 | File | Contents |
 |---|---|
-| `colored.ply` | 724,679 camera-colored points (`x y z rgb`), **thinned to 5 cm** for the repo. Cleaned of stray points in a point cloud editor after saving. |
-| `full.ply` | the full lidar map (`x y z intensity`) as recorded, **thinned to 10 cm** (the saved map has 4.9 M points at 3 cm) |
-| `info.json` | recording details |
+| `colored.pcd`, `colored.ply` | 732,170 camera-colored points (`x y z rgb`) |
+| `full.pcd`, `full.ply` | the full lidar map (`x y z intensity`), 404,765 points |
+| `trajectory.csv` | the lidar's path in the map frame (`t,x,y,z`, 10 Hz) |
+| `info.json` | recording details and the recording stats (scan rate, colored scans, callback times) |
+
+The saved map had 2,279,491 colored and 5,916,695 lidar points at 3 cm. Both were cleaned in a point cloud editor (points seen through windows and stray points deleted; no point moved or recolored: 95.7% and 98.6% kept), then **thinned for the repo** to one point per 5 cm (colored) and 10 cm (full) voxel. The README's full-floor images and animation are made from these files with [`tools/`](../tools/).
 
 ## `partial_floor_sample/`
 
