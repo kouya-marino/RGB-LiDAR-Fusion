@@ -217,9 +217,31 @@ ros2 service call /colorizer/start_map std_srvs/srv/Trigger
 ros2 service call /colorizer/stop_map std_srvs/srv/Trigger    # saves output/kitchen/
 ```
 
-Launch arguments: `odometry:=false` (stationary rig, no FAST-LIO), `sensors:=false` (sensors already running, or playing a bag), `web:=false`, `port:=8080`, `rviz:=true`, `accumulate:=true` (start recording at launch), `color_profile:=WxHxFPS`. Colorizer tuning is in [`config/colorizer.yaml`](rgb_lidar_fusion/config/colorizer.yaml).
+Launch arguments: `odometry:=false` (stationary rig, no FAST-LIO), `sensors:=false` (no sensor drivers, odometry or mount TF: everything already running elsewhere; to replay a bag see [Record and replay](#record-and-replay)), `web:=false`, `port:=8080`, `rviz:=true`, `accumulate:=true` (start recording at launch), `color_profile:=WxHxFPS`. Colorizer tuning is in [`config/colorizer.yaml`](rgb_lidar_fusion/config/colorizer.yaml).
 
 **How it works.** FAST-LIO2 registers each scan into its world frame and publishes the rig's pose as TF. For each scan the colorizer waits until an image from after the sweep's midpoint has arrived, picks the nearest one (dropping the scan if the gap exceeds `max_dt`, 50 ms), looks up where the camera was **at that image's timestamp** through TF (`camera_init → body → livox_frame → camera_link → camera_color_optical_frame`, interpolated between odometry poses), projects the points, rejects points hidden behind nearer ones, and samples their colors. Scans taken while the rig turns faster than 30°/s are not colored (motion smears color across edges) but still go into the full map. When you press Start, the accelerometer's gravity direction (rig held still) and the height you entered fix the levelled map frame. Images are subscribed **reliable**: a full-resolution frame (6.2 MB at 1080p) is larger than DDS shared memory, and best-effort delivery lost about half the frames in testing. With reliable delivery, 1080p at 15 fps arrives without gaps; with odometry running, over 99% of scans are colored.
+
+### Record and replay
+
+Record the raw sensor data while you map, to re-run the walk later without the rig (for example with other settings, or after a code change). In a second shell (`docker/run.sh`):
+
+```bash
+ros2 bag record -o /ws/src/rgb_lidar_fusion/output/<name>_bag /livox/lidar /livox/imu \
+  /camera/camera/color/image_raw /camera/camera/color/camera_info /tf /tf_static
+```
+
+Raw 1080p images at 15 fps take about 6 GB per minute. Start the bag before you press *Start recording* and stop it (Ctrl+C) after *Stop & save*.
+
+To replay, with the sensors unplugged or their drivers not running, start the odometry and the mount TF without the drivers, then the colorizer and web UI without sensors, then play the bag at normal speed. Leave the recorded `/tf` out, so FAST-LIO computes the poses again:
+
+```bash
+ros2 launch rgb_lidar_fusion sensors.launch.py lidar:=false camera:=false     # shell 1
+ros2 launch rgb_lidar_fusion colorize.launch.py sensors:=false                # shell 2
+ros2 bag play /ws/src/rgb_lidar_fusion/output/<name>_bag --topics /livox/lidar /livox/imu \
+  /camera/camera/color/image_raw /camera/camera/color/camera_info /tf_static  # shell 3
+```
+
+While the bag plays, press *Start recording* in the web UI at a moment when the rig was held still in the recording, since Start levels the map from that moment. A 48 s bag replayed this way gave the same map as the live recording: median distance between nearest points 0.9 cm, the same colors, every scan colored.
 
 ### Calibration
 
@@ -230,7 +252,7 @@ ros2 run rgb_lidar_fusion calibrate            # 20 s capture, solve, overlays +
 ros2 run rgb_lidar_fusion calibrate --write    # ... and update config/mount_extrinsics.yaml
 ```
 
-Keep the rig still, facing objects with clear outlines 2–4 m away. The tool keeps only points that stay put (people walking through drop out), uses the median of 9 images, leaves the floor out, refuses a capture where the rig or the odometry moved, and limits the correction to ±5°. It aligns depth edges in the lidar cloud with edges in the image, always comparing the same image cells for every candidate rotation (otherwise the search can pick a lucky subset of cells and look better while being worse). Results and before/after overlays go to `output/calibration/`; `--from <capture>.npz` re-solves a saved capture. Run at least two captures and only `--write` if they agree: on the reference rig four captures agreed within 0.23°, and that calibration is in [`config/mount_extrinsics.yaml`](rgb_lidar_fusion/config/mount_extrinsics.yaml).
+Keep the rig still, facing objects with clear outlines 2–4 m away. The tool keeps only points that stay put (people walking through drop out), uses the median of 9 images, leaves the floor out, refuses a capture where the rig or the odometry moved, and limits the correction to ±5°. It aligns depth edges in the lidar cloud with edges in the image, always comparing the same image cells for every candidate rotation (otherwise the search can pick a lucky subset of cells and look better while being worse). Results and before/after overlays go to `output/calibration/`; `--from <capture>.npz` re-solves a saved capture. Run at least two captures and only `--write` if they agree: on the reference rig four captures agreed within 0.22°, and that calibration is in [`config/mount_extrinsics.yaml`](rgb_lidar_fusion/config/mount_extrinsics.yaml).
 
 ## Example output
 
