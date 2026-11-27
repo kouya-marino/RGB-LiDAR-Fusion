@@ -167,13 +167,13 @@ To stop, press **Ctrl+C** in the launch terminal; a map that is still recording 
 | **Saved maps** | Collapsed list with a search box; click a map for its details, *View in 3D*, downloads (the map itself and each robot export) and *Delete* (type the map's name to confirm; not possible while that map is being recorded). `?map=<name>` links straight to one; add `&crop=x0,x1,y0,y1` (m) to share a cropped view. |
 
 <p align="center">
-  <img src="docs/images/webui_recording.png" alt="Web UI while recording: live colored map, lidar height 155 cm, auto-stop countdown, robot exports go2 and g1" width="860">
+  <img src="docs/images/webui_recording.png" alt="Web UI while recording: live colored map, lidar height 155 cm, auto-stop countdown, robot exports Unitree-Go2 and Unitree-G1" width="860">
 </p>
 
 <table>
   <tr>
-    <td width="68%"><img src="docs/images/webui_start_dialog.png" alt="Start recording dialog: map name, lidar height 155 cm flagged as not the default, color distance 10 m, auto-stop after 900 s, robot exports go2 and g1"></td>
-    <td width="32%"><img src="docs/images/webui_saved_maps_list.png" alt="Saved maps list: details, Re-export, Delete, downloads for the map, go2 and g1"></td>
+    <td width="68%"><img src="docs/images/webui_start_dialog.png" alt="Start recording dialog: map name, lidar height 155 cm flagged as not the default, color distance 10 m, auto-stop after 900 s, robot exports Unitree-Go2 and Unitree-G1"></td>
+    <td width="32%"><img src="docs/images/webui_saved_maps_list.png" alt="Saved maps list: details, Re-export, Delete, downloads for the map, Unitree-Go2 and Unitree-G1"></td>
   </tr>
   <tr>
     <td align="center"><sub>Start confirms the name, lidar height, color distance, auto-stop and robot exports, then counts down 15 s</sub></td>
