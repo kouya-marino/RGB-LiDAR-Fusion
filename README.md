@@ -1,5 +1,6 @@
 # RGB-LiDAR-Fusion
 
+[![Tests](https://github.com/kouya-marino/RGB-LiDAR-Fusion/actions/workflows/tests.yml/badge.svg)](https://github.com/kouya-marino/RGB-LiDAR-Fusion/actions/workflows/tests.yml)
 [![ROS 2 Humble](https://img.shields.io/badge/ROS%202-Humble-22314E?logo=ros)](https://docs.ros.org/en/humble/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](docker/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
