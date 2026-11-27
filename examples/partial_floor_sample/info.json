@@ -7,7 +7,7 @@
   "lidar_height_m": 0.852,
   "path_length_m": 0.12,
   "frame": "map: gravity-levelled, floor z=0, origin below the start lidar, +X forward",
-  "name": "office_sample",
+  "name": "partial_floor_sample",
   "full_points": 70048,
   "full_voxel_m": 0.05,
   "exports": []
