@@ -390,6 +390,10 @@ class ColorizerNode(Node):
         Everything is written to a hidden temporary folder first and swapped in
         at the end, so an existing map is only replaced by a complete new one
         (a failed save leaves the old map as it was)."""
+        # the recording ends now: writing a big map takes seconds, during which
+        # no images are handled, which must not count as recording time or as
+        # a camera loss
+        duration_s, stats = round(time.time() - self.rec_started, 1), self.recording_stats()
         final = os.path.join(self.output_dir, self.map_name)
         folder = os.path.join(self.output_dir, '.{}.saving'.format(self.map_name))
         shutil.rmtree(folder, ignore_errors=True)
@@ -411,7 +415,7 @@ class ColorizerNode(Node):
             name=self.map_name,
             started=datetime.fromtimestamp(self.rec_started).astimezone().isoformat(
                 timespec='seconds'),
-            duration_s=round(time.time() - self.rec_started, 1),
+            duration_s=duration_s,
             scans=self.rec_scans, colored_points=int(xyz_c.shape[0]),
             full_points=int(xyz_f.shape[0]), voxel_m=self.voxel,
             lidar_height_m=self.rec_height, color_range_m=self.rec_color_range,
@@ -420,7 +424,7 @@ class ColorizerNode(Node):
             path_length_m=round(length, 2),
             frame='map: gravity-levelled, floor z=0, origin below the start lidar, +X forward',
             exports=robot_list.describe(self.exports),
-            stats=self.recording_stats())
+            stats=stats)
         with open(os.path.join(folder, 'info.json'), 'w') as fh:
             json.dump(info, fh, indent=2)
         if os.path.exists(final):
