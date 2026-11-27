@@ -1,6 +1,7 @@
 """Camera loss: the status reports how long ago the last image arrived (the web UI
 warns past `camera_stale_s`), and a recording lists the stretches without
 images in info.json (e.g. the USB link dropped mid-walk)."""
+import numpy as np
 import pytest
 
 rclpy = pytest.importorskip('rclpy')
@@ -78,3 +79,28 @@ def test_camera_dead_from_the_start(node):
     image_at(node, 106.0)                                  # back: the loss is closed
     node.clock_.t = 107.0
     assert node.recording_stats()['camera_lost']['gaps_s'] == [[0.0, 6.0]]
+
+
+def test_saving_time_is_not_a_camera_loss(node, monkeypatch):
+    """Writing the map blocks image handling for seconds; info.json must
+    describe the recording up to Stop, not up to the end of the save."""
+    import json
+    import os
+    node.map_name = 'm'
+    node.rec_T = None
+    start_recording(node, 100.0)
+    node.rec_started = cn.time.time() - 30.0
+    for t in np.arange(100.0, 130.0, 0.5):                 # images all along
+        image_at(node, float(t))
+    node.clock_.t = 130.0                                  # Stop pressed here
+
+    real = cn.write_both
+
+    def slow_write(*a, **k):                               # the save takes 15 s
+        node.clock_.t += 15.0
+        return real(*a, **k)
+    monkeypatch.setattr(cn, 'write_both', slow_write)
+    node.save_map()
+    info = json.load(open(os.path.join(node.output_dir, 'm', 'info.json')))
+    assert info['stats']['camera_lost']['times'] == 0
+    assert 29.0 <= info['duration_s'] <= 31.0
