@@ -38,7 +38,7 @@ Then open **http://localhost:8080**. First time? Set up the lidar's network as i
 **A whole floor**, mapped by walking 152 m in 13 min with the rig held up (lidar at 1.73 m):
 
 <p align="center">
-  <img src="docs/images/demo_full_room.gif" alt="A whole office floor in three synchronized views: lidar and camera combined, camera-colored points only, full lidar colored by height" width="900">
+  <img src="docs/images/demo_full_room.gif" alt="A whole building floor in three synchronized views: lidar and camera combined, camera-colored points only, full lidar colored by height" width="900">
 </p>
 
 <p align="center">
@@ -53,10 +53,10 @@ The views, left to right: camera colors inside the full lidar map, only the came
 **One area**, turning the rig in place:
 
 <p align="center">
-  <img src="docs/images/demo_colored_map.gif" alt="An office map in three synchronized views: lidar and camera combined, camera-colored points only, full lidar colored by height" width="900">
+  <img src="docs/images/demo_colored_map.gif" alt="A partial floor map in three synchronized views: lidar and camera combined, camera-colored points only, full lidar colored by height" width="900">
 </p>
 
-An office mapped in 27 s with the rig on a pole, ceiling hidden with the viewer's height clip. **Left:** the result, camera colors inside the full lidar map. **Middle:** only the camera-colored points (the camera looks 20° down, so mostly floor, furniture and lower walls). **Right:** the full lidar map, colored by height. The data is in [`examples/office_sample/`](examples/office_sample/).
+Part of a floor mapped in 27 s with the rig on a pole, ceiling hidden with the viewer's height clip. **Left:** the result, camera colors inside the full lidar map. **Middle:** only the camera-colored points (the camera looks 20° down, so mostly floor, furniture and lower walls). **Right:** the full lidar map, colored by height. The data is in [`examples/partial_floor_sample/`](examples/partial_floor_sample/).
 
 ## Features
 
@@ -256,7 +256,7 @@ Keep the rig still, facing objects with clear outlines 2–4 m away. The tool ke
 
 ## Example output
 
-Two sample maps, each with the colored and the full cloud: a whole floor in [`examples/room_sample/`](examples/room_sample/) (`.ply`) and one area in [`examples/office_sample/`](examples/office_sample/) (`.pcd` and `.ply`); see [`examples/README.md`](examples/README.md) for how to open it.
+Two sample maps, each with the colored and the full cloud: a whole floor in [`examples/room_sample/`](examples/room_sample/) (`.ply`) and one area in [`examples/partial_floor_sample/`](examples/partial_floor_sample/) (`.pcd` and `.ply`); see [`examples/README.md`](examples/README.md) for how to open it.
 
 ## Roadmap
 
